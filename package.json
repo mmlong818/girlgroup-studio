@@ -1,0 +1,16 @@
+{
+  "name": "girlgroup-studio",
+  "version": "0.1.0",
+  "description": "A local virtual idol IP studio for concept, member, story, visual, and operations planning.",
+  "type": "module",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "check": "node scripts/check.mjs",
+    "smoke:api": "node test-api.mjs"
+  },
+  "dependencies": {}
+}

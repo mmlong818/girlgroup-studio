@@ -1,0 +1,24 @@
+.env
+.env.*
+!.env.example
+
+data/
+node_modules/
+
+# Local scratch files
+.shot.ps1
+design-ref/
+
+# Logs and runtime output
+*.log
+*.pid
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

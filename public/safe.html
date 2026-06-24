@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>成团 StarForm · 安全页</title>
+<meta name="description" content="成团 StarForm 轻量安全页">
+<style>
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  font-family: system-ui, "Microsoft YaHei UI", sans-serif;
+  color: #15161d;
+  background: #f3f4f9;
+}
+main {
+  width: min(560px, calc(100vw - 32px));
+  padding: 28px;
+  border: 1px solid #e4e6f0;
+  background: #fff;
+}
+h1 { margin: 0 0 8px; font-size: 26px; line-height: 1.2; }
+p { margin: 0 0 18px; color: #4b4e5c; line-height: 1.7; }
+.actions { display: flex; gap: 10px; flex-wrap: wrap; }
+a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 700;
+}
+.primary { background: #15161d; color: #fff; }
+.ghost { border: 1px solid #d8dbe7; color: #15161d; background: #fff; }
+small { display: block; margin-top: 16px; color: #888da0; line-height: 1.6; }
+</style>
+</head>
+<body>
+<main>
+  <h1>成团 StarForm</h1>
+  <p>这是轻量安全页，只用于排查浏览器或服务状态，不加载完整前端资源。</p>
+  <div class="actions">
+    <a class="primary" href="/">打开完整工作台</a>
+    <a class="ghost" href="/api/config">检查服务配置</a>
+  </div>
+  <small>正常使用请访问 http://localhost:3210/。</small>
+</main>
+</body>
+</html>
