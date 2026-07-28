@@ -24,6 +24,10 @@ export const api = {
     update: (id, data, name) => req('PATCH', `/api/groups/${id}`, { data, name }).then((d) => d.group),
     remove: (id) => req('DELETE', `/api/groups/${id}`),
   },
+  backups: {
+    get: (id) => req('GET', `/api/groups/${id}/export`).then((d) => d.backup),
+    restore: (backup) => req('POST', '/api/import', { backup }).then((d) => d.group),
+  },
   studio: {
     get: (groupId) => req('GET', `/api/groups/${groupId}/studio`).then((d) => d.studio),
     set: (groupId, kind, topics) => req('POST', '/api/studio', { groupId, kind, topics }),
@@ -39,7 +43,7 @@ export const api = {
     upload: (groupId, member, dataUrl) => req('POST', '/api/images/upload', { groupId, member, dataUrl }).then((d) => d.image),
     generate: (groupId, member, prompt, size, quality, kind) =>
       req('POST', '/api/images/generate', { groupId, member, prompt, size, quality, kind }).then((d) => d.image),
-    setPrimary: (id) => req('POST', `/api/images/${id}/primary`),
+    setPrimary: (id) => req('POST', `/api/images/${id}/primary`, {}),
     remove: (id) => req('DELETE', `/api/images/${id}`),
   },
 };

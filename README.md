@@ -7,11 +7,11 @@ StarForm 是一个本地优先的虚拟偶像 IP 创建与运营设计工具。�
 ## 功能
 
 - 企划生成：从 3 个概念方向开始，逐阶段生成并锁定概念、成员、关系、故事和运营内容。
-- 工作台：成团后仍可编辑字段、重写模块、导出 Markdown 和 JSON。
+- 工作台：成团后仍可编辑字段、重写模块、导出 Markdown 和完整备份 JSON。
 - 视觉车间：支持上传图片，也可接入 OpenAI 兼容图像模型生成成员图和团体海报。
 - 运营中心：作品库、发布日历、短视频创作间、日常选题工坊和 AI 排期助理。
 - 公开页：每个团有本地分享链接 `/g/:shareId`，用于展示出道页。
-- 本地数据：SQLite 数据库和上传图片保存在 `data/`，不会依赖浏览器存储。
+- 本地数据：业务数据统一进入 SQLite，上传图片保存在 `data/`，不会依赖浏览器存储。
 
 ## 环境要求
 
@@ -52,6 +52,7 @@ http://localhost:3210/safe.html
 ```env
 PORT=3210
 HOST=127.0.0.1
+ALLOWED_HOSTS=
 
 ZHIPUAI_API_KEY=
 MODEL_ID=glm-5.2
@@ -68,6 +69,7 @@ IMAGE_MODEL_ID=gpt-image-2
 ```powershell
 npm start       # 启动本地服务
 npm run check   # 对所有 JS/MJS 文件做 node --check 语法检查
+npm test        # 使用临时 SQLite 数据库运行隔离测试
 npm run smoke:api
 ```
 
@@ -78,7 +80,8 @@ npm run smoke:api
 ```text
 server.mjs              HTTP 服务与 API 路由
 db.mjs                  SQLite 数据层
-settings.mjs            模型配置读写，保存到 data/settings.json
+settings.mjs            模型配置读写，保存到 SQLite
+validation.mjs          API 输入与模型返回结构校验
 config.mjs              .env 与环境变量读取
 glm.mjs                 文字模型调用与 JSON 容错解析
 images.mjs              图片上传、落盘与图像模型调用
@@ -86,11 +89,16 @@ prompts.mjs             多阶段生成提示词
 test-api.mjs            API 冒烟测试
 scripts/check.mjs       源码语法检查脚本
 public/                 前端静态资源
-public/index.html       完整工作台入口
-public/full.html        兼容旧链接的完整工作台入口
+public/index.html       唯一的完整工作台入口
+public/app.html         兼容旧链接的跳转入口
+public/full.html        兼容旧链接的跳转入口
 public/safe.html        轻量排障页
-data/                   本地数据库、设置和上传图片，已 gitignore
+data/                   SQLite 数据库和上传图片，已 gitignore
 ```
+
+企划、作品、创作间内容、运营周期和模型设置都保存在 `data/starform.db`。图片原文件保存在 `data/uploads/`，数据库保存图片元数据。旧版 `data/settings.json` 会在首次启动时自动迁移到 SQLite，原文件不会自动删除。
+
+工作台的“完整备份”包含企划、作品、创作间选题和图片，可从首页直接恢复；模型 API Key 不会写入备份文件。
 
 ## 发布前检查
 

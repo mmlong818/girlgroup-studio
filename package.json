@@ -10,6 +10,7 @@
   "scripts": {
     "start": "node server.mjs",
     "check": "node scripts/check.mjs",
+    "test": "node --test tests/core.test.mjs",
     "smoke:api": "node test-api.mjs"
   },
   "dependencies": {}

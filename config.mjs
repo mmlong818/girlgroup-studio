@@ -12,6 +12,6 @@ if (existsSync(envPath)) {
     if (m) env[m[1]] = m[2];
   }
 }
-for (const k of ['ZHIPUAI_API_KEY', 'MODEL_ID', 'PORT', 'HOST', 'OPENAI_API_KEY', 'OPENAI_BASE_URL', 'IMAGE_MODEL_ID']) {
+for (const k of ['ZHIPUAI_API_KEY', 'MODEL_ID', 'PORT', 'HOST', 'ALLOWED_HOSTS', 'OPENAI_API_KEY', 'OPENAI_BASE_URL', 'IMAGE_MODEL_ID']) {
   if (process.env[k]) env[k] = process.env[k];
 }

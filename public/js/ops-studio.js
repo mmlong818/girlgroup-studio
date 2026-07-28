@@ -81,27 +81,32 @@ export function renderStudio(el, O, kind, openWork, reloadWorks) {
 
 async function startGenerate(el, O, kind, openWork, reloadWorks) {
   const meta = KIND_META[kind];
+  const group = O.group;
+  const groupId = group.id;
   O.hints[kind] = $('#st-hint', el)?.value.trim() || '';
+  const hint = O.hints[kind];
+  const angle = O.angle?.[kind] || '';
   O.generating[kind] = true;
   renderStudio(el, O, kind, openWork, reloadWorks); // 立即进入"生成中"状态
 
   try {
-    const d = O.group.data;
-    const angle = O.angle?.[kind] || '';
+    const d = group.data;
     const payload = kind === 'video'
       ? {
           concept: d.concept, members: d.members, relations: d.relations,
           historyHighlights: (d.history || []).filter(Boolean).map((h) => `${h.codename}:${h.dailyLife}`).join('；').slice(0, 600),
-          angle, hint: O.hints[kind],
+          angle, hint,
         }
-      : { concept: d.concept, members: d.members, history: d.history || [], angle, hint: O.hints[kind] };
+      : { concept: d.concept, members: d.members, history: d.history || [], angle, hint };
     const r = await api.stage(meta.stage, payload);
-    O.topics[kind] = r.topics || [];
-    await api.studio.set(O.group.id, kind, O.topics[kind]);
+    const topics = r.topics || [];
+    await api.studio.set(groupId, kind, topics);
+    if (O.group?.id === groupId) O.topics[kind] = topics;
     toast(`✅ ${meta.title}选题已生成`);
   } catch (e) {
     toast(`${meta.title}生成失败：` + e.message, 3500);
   }
+  if (O.group?.id !== groupId) return;
   O.generating[kind] = false;
 
   // 仅当用户当前仍停留在本工坊时刷新界面；否则保留提示，回来时自然看到结果
@@ -150,16 +155,18 @@ function topicsHTML(kind, topics) {
 }
 
 function bindTopicActions(el, O, kind, openWork, reloadWorks) {
+  const groupId = O.group.id;
+  const topics = O.topics[kind];
   el.querySelectorAll('[data-copy]').forEach((b) => b.onclick = () => copyText(b.dataset.copy));
   el.querySelectorAll('[data-save]').forEach((b) => b.onclick = async () => {
-    const t = O.topics[kind][Number(b.dataset.save)];
+    const t = topics[Number(b.dataset.save)];
     const fields = kind === 'video'
       ? { type: 'short_video', title: t.title, members: (t.members || []).join('，'), status: 'idea', content: { topic: t, hook: t.hook } }
       : { type: 'daily', title: t.title, members: t.member || '', status: 'idea', content: { topic: t, hook: t.hook, copy: t.copy || '' } };
     b.disabled = true;
     try {
-      await api.works.create(O.group.id, fields);
-      await reloadWorks();
+      await api.works.create(groupId, fields);
+      if (O.group?.id === groupId) await reloadWorks();
       b.textContent = '✔ 已存入作品库';
       toast(`已存入作品库：${t.title}`);
     } catch (e) {

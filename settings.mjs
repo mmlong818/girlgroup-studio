@@ -1,10 +1,17 @@
-// 模型 API 绑定 — 文字 / 图像两套，落盘 data/settings.json，运行时即时生效
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+// 模型 API 绑定 — 文字 / 图像两套，存入 SQLite，运行时即时生效
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { DATA_DIR } from './db.mjs';
+import { AppSettings, DATA_DIR } from './db.mjs';
 import { env } from './config.mjs';
 
-const FILE = path.join(DATA_DIR, 'settings.json');
+const LEGACY_FILE = path.join(DATA_DIR, 'settings.json');
+const SETTINGS_KEY = 'model_bindings';
+
+function settingError(message) {
+  const err = new Error(message);
+  err.statusCode = 400;
+  return err;
+}
 
 // 出厂默认：文字用智谱 GLM-5.2（关闭思维模式），图像用 OpenAI 兼容
 const DEFAULTS = {
@@ -21,9 +28,35 @@ const DEFAULTS = {
   },
 };
 
+function readLegacy() {
+  if (!existsSync(LEGACY_FILE)) return null;
+  try { return JSON.parse(readFileSync(LEGACY_FILE, 'utf8')); } catch { return null; }
+}
+
 function load() {
-  if (!existsSync(FILE)) return {};
-  try { return JSON.parse(readFileSync(FILE, 'utf8')); } catch { return {}; }
+  const stored = AppSettings.get(SETTINGS_KEY);
+  if (stored) return stored;
+  const legacy = readLegacy();
+  if (legacy) AppSettings.set(SETTINGS_KEY, legacy);
+  return legacy || {};
+}
+
+function normalizeBaseUrl(value) {
+  const raw = String(value || '').trim().replace(/\/$/, '');
+  let parsed;
+  try { parsed = new URL(raw); } catch { throw settingError('API 地址格式无效'); }
+  const loopback = ['localhost', '127.0.0.1', '::1'].includes(parsed.hostname);
+  if (parsed.protocol !== 'https:' && !(parsed.protocol === 'http:' && loopback)) {
+    throw settingError('API 地址必须使用 HTTPS；本机 localhost 可使用 HTTP');
+  }
+  if (parsed.username || parsed.password) throw settingError('API 地址不能包含用户名或密码');
+  return parsed.toString().replace(/\/$/, '');
+}
+
+function normalizeModelId(value) {
+  const id = String(value || '').trim();
+  if (!id || id.length > 200 || /[\r\n]/.test(id)) throw settingError('模型 ID 无效');
+  return id;
 }
 
 export function getText() {
@@ -51,13 +84,24 @@ export function save(patch = {}) {
   for (const kind of ['text', 'image']) {
     const p = patch[kind];
     if (!p) continue;
-    if (p.baseUrl !== undefined) next[kind].baseUrl = String(p.baseUrl).trim();
-    if (p.modelId !== undefined) next[kind].modelId = String(p.modelId).trim();
+    if (typeof p !== 'object' || Array.isArray(p)) throw settingError('模型设置格式无效');
+    if (p.baseUrl !== undefined) {
+      const baseUrl = normalizeBaseUrl(p.baseUrl);
+      const oldBaseUrl = kind === 'text' ? getText().baseUrl : getImage().baseUrl;
+      const hasNewKey = typeof p.apiKey === 'string' && p.apiKey.trim() && !p.apiKey.includes('•');
+      if (baseUrl !== normalizeBaseUrl(oldBaseUrl) && !hasNewKey) {
+        throw settingError('修改 API 地址时需要重新输入对应的 API Key');
+      }
+      next[kind].baseUrl = baseUrl;
+    }
+    if (p.modelId !== undefined) next[kind].modelId = normalizeModelId(p.modelId);
     if (kind === 'text' && p.thinking !== undefined) next[kind].thinking = Boolean(p.thinking);
     if (p.apiKey !== undefined && String(p.apiKey).trim() && !String(p.apiKey).includes('•')) {
-      next[kind].apiKey = String(p.apiKey).trim();
+      const apiKey = String(p.apiKey).trim();
+      if (apiKey.length > 4096 || /[\r\n]/.test(apiKey)) throw settingError('API Key 格式无效');
+      next[kind].apiKey = apiKey;
     }
   }
-  writeFileSync(FILE, JSON.stringify(next, null, 2));
+  AppSettings.set(SETTINGS_KEY, next);
   return publicView();
 }

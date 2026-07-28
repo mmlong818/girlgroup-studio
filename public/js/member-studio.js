@@ -3,6 +3,17 @@
 import { api } from './api.js';
 import { $, esc, toast, confirmModal } from './ui.js';
 
+function appearanceText(member) {
+  const appearance = member.appearance;
+  if (typeof appearance === 'string' && appearance.trim()) return appearance.trim();
+  if (appearance && typeof appearance === 'object') {
+    const details = [appearance.face, appearance.hair, appearance.eyes, appearance.body]
+      .filter((value) => typeof value === 'string' && value.trim());
+    if (details.length) return details.join(', ');
+  }
+  return `${member.codename}, ${member.archetype || 'idol'} archetype`;
+}
+
 // ── 内容类型 ──────────────────────────────────────────────────────
 export const CATS = [
   {
@@ -11,7 +22,7 @@ export const CATS = [
     styles: ['日系清新', '韩系精致', '古典端庄', '中性帅气'],
     size: '1024x1536',
     prompt: (m, g, style, hint) =>
-      `${style} style Korean idol portrait photography. Character: ${m.appearance || `${m.codename}, ${m.archetype} archetype`}. Vibe: ${g.vibe || 'youthful'}. Accent color: ${m.color}. Soft studio lighting, film grain.${hint ? ' ' + hint : ''}`,
+      `${style} style Korean idol portrait photography. Character: ${appearanceText(m)}. Vibe: ${g.vibe || 'youthful'}. Accent color: ${m.color}. Soft studio lighting, film grain.${hint ? ' ' + hint : ''}`,
   },
   {
     id: 'makeup', label: '妆造设计',
@@ -19,7 +30,7 @@ export const CATS = [
     styles: ['清透裸妆', '复古红唇', '舞台浓妆', '创意个性'],
     size: '1024x1024',
     prompt: (m, g, style, hint) =>
-      `${style} Korean idol makeup look, close-up beauty portrait. Character: ${m.appearance || m.codename}. Group vibe: ${g.vibe || 'fresh'}. Color palette: ${m.color}. Flawless skin, beauty magazine quality.${hint ? ' ' + hint : ''}`,
+      `${style} Korean idol makeup look, close-up beauty portrait. Character: ${appearanceText(m)}. Group vibe: ${g.vibe || 'fresh'}. Color palette: ${m.color}. Flawless skin, beauty magazine quality.${hint ? ' ' + hint : ''}`,
   },
   {
     id: 'outfit', label: '服饰造型',
@@ -27,7 +38,7 @@ export const CATS = [
     styles: ['演出舞台服', '街拍日常风', '制服学院风', '杂志高定'],
     size: '1024x1536',
     prompt: (m, g, style, hint) =>
-      `Full body ${style} fashion photography. Korean idol: ${m.appearance || m.codename}, ${m.archetype} type. Concept: ${g.concept || g.name}. Color accent ${m.color}. Clean background, editorial quality.${hint ? ' ' + hint : ''}`,
+      `Full body ${style} fashion photography. Korean idol: ${appearanceText(m)}. Concept: ${g.concept || g.name}. Color accent ${m.color}. Clean background, editorial quality.${hint ? ' ' + hint : ''}`,
   },
   {
     id: 'dynamic', label: '动态写真',
@@ -35,7 +46,7 @@ export const CATS = [
     styles: ['舞台高光', '奔跑跳跃', '封面 Pose', '日常温柔'],
     size: '1536x1024',
     prompt: (m, g, style, hint) =>
-      `${style} dynamic action photography, K-pop idol. Character: ${m.appearance || m.codename}, ${m.archetype} archetype. Cinematic lighting. Concept: ${g.concept || g.name}. Color ${m.color}.${hint ? ' ' + hint : ''}`,
+      `${style} dynamic action photography, K-pop idol. Character: ${appearanceText(m)}. Cinematic lighting. Concept: ${g.concept || g.name}. Color ${m.color}.${hint ? ' ' + hint : ''}`,
   },
   {
     id: 'editorial', label: '杂志大片',
@@ -43,7 +54,7 @@ export const CATS = [
     styles: ['封面故事', '时尚大片', '概念艺术', '全身时装'],
     size: '1024x1536',
     prompt: (m, g, style, hint) =>
-      `${style} magazine editorial photography, Korean high fashion. Idol: ${m.appearance || m.codename}. Color scheme: ${m.color}. Group aesthetic: ${g.vibe || g.concept || g.name}. Art-directed, luxury.${hint ? ' ' + hint : ''}`,
+      `${style} magazine editorial photography, Korean high fashion. Idol: ${appearanceText(m)}. Color scheme: ${m.color}. Group aesthetic: ${g.vibe || g.concept || g.name}. Art-directed, luxury.${hint ? ' ' + hint : ''}`,
   },
 ];
 
@@ -167,12 +178,12 @@ function renderCatPanel(el, G, M, catId, isGenerating, setGenerating, rerender) 
 
   $('#ms-gen-btn', el).onclick = async () => {
     if (isGenerating()) return;
+    const hint = $('#ms-hint', el)?.value.trim() || '';
+    const prompt = cat.prompt(M, G.data.concept, selectedStyle, hint);
     setGenerating(true);
     rerender();
-    const hint = document.getElementById('ms-hint')?.value.trim() || '';
-    const prompt = cat.prompt(M, G.data.concept, selectedStyle, hint);
     try {
-      const img = await api.images.generate(G.id, M.codename, prompt, cat.size, 'standard', cat.id);
+      const img = await api.images.generate(G.id, M.codename, prompt, cat.size, 'medium', cat.id);
       G.images.unshift({ ...img });
       toast(`${cat.label}已生成`);
     } catch (e) {

@@ -75,7 +75,7 @@ try {
   // 图片上传 + 主图 + 公开页
   const { image } = await req('POST', '/api/images/upload', { groupId, member: '零', dataUrl: TINY_PNG });
   console.log('✔ 上传图片', image.url, 'primary:', image.isPrimary);
-  await req('POST', `/api/images/${image.id}/primary`);
+  await req('POST', `/api/images/${image.id}/primary`, {});
   const pub = (await req('GET', `/api/public/${group.shareId}`)).group;
   console.log('✔ 公开页', pub.name, '图片数:', pub.images.length);
 

@@ -20,7 +20,6 @@ export const STATUS_META = {
 };
 
 const O = { group: null, works: [], tab: 'calendar', month: null, topics: {} };
-let planClose = null;
 
 // 线性图标（Lucide 风格，currentColor 跟随导航状态）
 const ICONS = {
@@ -37,14 +36,17 @@ const fmtDate = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2
 
 const VALID_TABS = ['overview', 'calendar', 'daily', 'video', 'studio', 'works'];
 
-export async function renderOps(app, groupId, initialTab) {
+export async function renderOps(app, groupId, initialTab, isCurrent = () => true) {
   if (O.group?.id !== groupId) { O.topics = {}; O.generating = {}; O.hints = {}; }
   app.innerHTML = `<div class="empty-state"><div class="big">⏳</div>加载运营中心…</div>`;
   try {
-    [O.group, O.works, O.topics] = await Promise.all([
+    const [group, works, topics] = await Promise.all([
       api.groups.get(groupId), api.works.list(groupId), api.studio.get(groupId),
     ]);
+    if (!isCurrent()) return;
+    [O.group, O.works, O.topics] = [group, works, topics];
   } catch (e) {
+    if (!isCurrent()) return;
     app.innerHTML = `<div class="empty-state">加载失败：${esc(e.message)}</div>`;
     return;
   }
@@ -89,8 +91,10 @@ export async function renderOps(app, groupId, initialTab) {
   renderOpsTab();
 }
 
-async function reloadWorks() {
-  O.works = await api.works.list(O.group.id);
+async function reloadWorks(groupId = O.group.id) {
+  const works = await api.works.list(groupId);
+  if (O.group?.id === groupId) O.works = works;
+  return works;
 }
 
 function updateAlerts() {
@@ -204,7 +208,15 @@ function renderOverview(el) {
   if (annN <= 45) upcoming.push({ icon: '🎉', label: '出道纪念日', date: `${cd.getMonth() + 1}/${cd.getDate()}`, days: annN });
   upcoming.sort((a, b) => a.days - b.days);
 
-  const cycle = localStorage.getItem(`ops-cycle-${g.id}`) || '日常期';
+  const legacyCycleKey = `ops-cycle-${g.id}`;
+  const legacyCycle = localStorage.getItem(legacyCycleKey);
+  const cycle = d.opsCycle || legacyCycle || '日常期';
+  if (!d.opsCycle && legacyCycle) {
+    d.opsCycle = legacyCycle;
+    api.groups.update(g.id, d)
+      .then((group) => { if (O.group === g) O.group = group; localStorage.removeItem(legacyCycleKey); })
+      .catch(() => { delete d.opsCycle; });
+  }
   const cycleSel = `<label class="cycle-sel">当前周期
     <select id="ov-cycle">${CYCLE.map(([k, hint]) => `<option value="${k}" ${k === cycle ? 'selected' : ''}>${k} · ${hint}</option>`).join('')}</select></label>`;
 
@@ -244,7 +256,20 @@ function renderOverview(el) {
     </div>
   </div>`;
 
-  $('#ov-cycle').onchange = (e) => { localStorage.setItem(`ops-cycle-${g.id}`, e.target.value); };
+  $('#ov-cycle').onchange = async (e) => {
+    const previous = d.opsCycle;
+    d.opsCycle = e.target.value;
+    try {
+      const updated = await api.groups.update(g.id, d);
+      if (O.group === g) O.group = updated;
+      localStorage.removeItem(legacyCycleKey);
+    } catch (err) {
+      if (previous === undefined) delete d.opsCycle;
+      else d.opsCycle = previous;
+      e.target.value = previous || '日常期';
+      toast('周期保存失败：' + err.message, 3000);
+    }
+  };
   el.querySelectorAll('[data-go]').forEach((b) => b.onclick = () => gotoTab(b.dataset.go));
   const planBtn = el.querySelector('[data-plan]');
   if (planBtn) planBtn.onclick = () => { gotoTab('calendar'); setTimeout(openPlanModal, 60); };
@@ -370,9 +395,11 @@ function workCard(w) {
 
 // ── 作品详情 / 新建 ──
 export function openWork(work, presetDate = '', presetStatus = '') {
+  const group = O.group;
+  const groupId = group.id;
   const isNew = !work;
   const w = work || { type: 'short_video', title: '', members: '', channel: '', status: presetStatus || (presetDate ? 'scheduled' : 'idea'), publishAt: presetDate, content: {} };
-  const memberNames = O.group.data.members.map((m) => m.codename);
+  const memberNames = group.data.members.map((m) => m.codename);
 
   modal(`<h3>${isNew ? '＋ 新建作品' : '作品详情'}</h3>
     <label class="field"><span class="field-label">标题</span><input id="wk-title" type="text" value="${esc(w.title)}" placeholder="作品标题"></label>
@@ -411,29 +438,29 @@ export function openWork(work, presetDate = '', presetStatus = '') {
       $('[data-x]', mask).onclick = close;
       $('[data-ok]', mask).onclick = async () => {
         const fields = readForm();
-        if (isNew) await api.works.create(O.group.id, fields);
+        if (isNew) await api.works.create(groupId, fields);
         else await api.works.update(w.id, fields);
-        await reloadWorks();
+        if (O.group?.id === groupId) await reloadWorks();
         close();
         toast(isNew ? '已创建' : '已保存');
-        renderOpsTab();
+        if (O.group?.id === groupId) renderOpsTab();
       };
       const pubBtn = mask.querySelector('[data-pub]');
       if (pubBtn) pubBtn.onclick = async () => {
         await api.works.update(w.id, { ...readForm(), status: 'published' });
-        await reloadWorks();
+        if (O.group?.id === groupId) await reloadWorks();
         close();
         toast('已标记为已发布 🎉');
-        renderOpsTab();
+        if (O.group?.id === groupId) renderOpsTab();
       };
       const delBtn = mask.querySelector('[data-del]');
       if (delBtn) delBtn.onclick = async () => {
         if (await confirmModal('删除作品', `确定删除「${w.title}」吗？`)) {
           await api.works.remove(w.id);
-          await reloadWorks();
+          if (O.group?.id === groupId) await reloadWorks();
           close();
           toast('已删除');
-          renderOpsTab();
+          if (O.group?.id === groupId) renderOpsTab();
         }
       };
       // 复制按钮
@@ -458,7 +485,7 @@ export function openWork(work, presetDate = '', presetStatus = '') {
         genScript.disabled = true;
         genScript.innerHTML = '<span class="spinner"></span> 生成中…';
         try {
-          const d = O.group.data;
+          const d = group.data;
           const names = ($('#wk-members', mask).value || '').split(/[,，、]/).map((s) => s.trim()).filter(Boolean);
           const cast = d.members.filter((mm) => names.includes(mm.codename) || names.includes('全员') || !names.length);
           const topic = w.content.topic || { title: $('#wk-title', mask).value, hook: w.content.hook || '', format: '30秒剧情', desc: '' };
@@ -476,7 +503,7 @@ export function openWork(work, presetDate = '', presetStatus = '') {
         genCopy.disabled = true;
         genCopy.innerHTML = '<span class="spinner"></span> 生成中…';
         try {
-          const d = O.group.data;
+          const d = group.data;
           const names = ($('#wk-members', mask).value || '').split(/[,，、]/).map((s) => s.trim()).filter(Boolean);
           const member = d.members.find((mm) => names.includes(mm.codename)) || d.members[0];
           const mi = d.members.indexOf(member);
@@ -520,7 +547,11 @@ function contentHTML(w) {
 
 // ── AI 排期助理 ──
 function openPlanModal() {
+  const group = O.group;
+  const groupId = group.id;
+  const works = O.works;
   const today = fmtDate(new Date());
+  let closePlan;
   modal(`<h3>🤖 AI 智能排期</h3>
     <p class="sub" style="margin-bottom:16px">按团队人设和关系生成 7 天发布计划，逐条确认后写入日历。已排定的内容会自动避开。</p>
     <div class="field-row">
@@ -528,7 +559,7 @@ function openPlanModal() {
       <label class="field"><span class="field-label">要求 <small>（可留空）</small></span><input id="pl-hint" type="text" placeholder="例如：这周主推小叮 / 周末要有直播 / 轻松一点"></label>
       <button class="btn btn-primary" id="pl-gen">🤖 生成一周排期</button>
     </div>
-    <div id="pl-result"></div>`, { onMount: (mask, close) => { planClose = close; } });
+    <div id="pl-result"></div>`, { onMount: (mask, close) => { closePlan = close; } });
 
   $('#pl-gen').onclick = async () => {
     const btn = $('#pl-gen');
@@ -537,8 +568,8 @@ function openPlanModal() {
     try {
       const start = new Date($('#pl-start').value + 'T00:00:00');
       const dates = Array.from({ length: 7 }, (_, i) => fmtDate(new Date(start.getTime() + i * 864e5)));
-      const d = O.group.data;
-      const existing = O.works.filter((w) => w.publishAt && dates.includes(w.publishAt)).map((w) => ({ date: w.publishAt, title: w.title }));
+      const d = group.data;
+      const existing = works.filter((w) => w.publishAt && dates.includes(w.publishAt)).map((w) => ({ date: w.publishAt, title: w.title }));
       const columns = d.operations
         ? [...(d.operations.liveShows || []).map((x) => `直播·${x.name}`), ...(d.operations.shortVideoColumns || []).map((x) => `短视频·${x.name}`)].join('、')
         : '';
@@ -546,7 +577,7 @@ function openPlanModal() {
         concept: d.concept, members: d.members, relations: d.relations,
         columns, dates, existing, hint: $('#pl-hint').value.trim(),
       });
-      renderPlanResult(plan);
+      renderPlanResult(plan, groupId, closePlan);
     } catch (e) {
       toast('排期失败：' + e.message, 3500);
     }
@@ -555,7 +586,7 @@ function openPlanModal() {
   };
 }
 
-function renderPlanResult(plan) {
+function renderPlanResult(plan, groupId, closePlan) {
   const rows = [];
   (plan.days || []).forEach((day, di) => {
     (day.items || []).forEach((item, ii) => {
@@ -588,11 +619,13 @@ function renderPlanResult(plan) {
       });
     });
     if (!picked.length) return toast('没有勾选任何内容');
-    await api.works.batch(O.group.id, picked);
-    await reloadWorks();
+    await api.works.batch(groupId, picked);
+    if (O.group?.id === groupId) await reloadWorks();
     toast(`已写入 ${picked.length} 条排期`);
-    if (planClose) planClose();
-    O.tab = 'calendar';
-    renderOpsTab();
+    closePlan?.();
+    if (O.group?.id === groupId) {
+      O.tab = 'calendar';
+      renderOpsTab();
+    }
   };
 }

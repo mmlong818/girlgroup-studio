@@ -6,6 +6,12 @@ import { UPLOAD_DIR, uid } from './db.mjs';
 
 const EXT = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp' };
 
+function inputError(message) {
+  const err = new Error(message);
+  err.statusCode = 400;
+  return err;
+}
+
 export function imageGenAvailable() {
   const k = getImage().apiKey;
   return Boolean(k && !k.includes('your-'));
@@ -14,9 +20,10 @@ export function imageGenAvailable() {
 // dataUrl: "data:image/png;base64,...."（前端上传）
 export async function saveDataUrl(dataUrl) {
   const m = dataUrl.match(/^data:(image\/(?:png|jpeg|webp));base64,(.+)$/s);
-  if (!m) throw new Error('图片格式不支持，请上传 PNG / JPG / WebP');
+  if (!m || !/^[A-Za-z0-9+/]+={0,2}$/.test(m[2])) throw inputError('图片格式不支持，请上传 PNG / JPG / WebP');
   const buf = Buffer.from(m[2], 'base64');
-  if (buf.length > 15 * 1024 * 1024) throw new Error('图片超过 15MB');
+  if (!buf.length) throw inputError('图片数据为空或损坏');
+  if (buf.length > 15 * 1024 * 1024) throw inputError('图片超过 15MB');
   const filename = uid(14) + EXT[m[1]];
   await writeFile(path.join(UPLOAD_DIR, filename), buf);
   return filename;

@@ -20,15 +20,19 @@ function pathToNodeKey(path) {
 }
 
 async function toggleLock(key) {
-  G.data.locks = G.data.locks || {};
-  G.data.locks[key] = !G.data.locks[key];
-  await save(); renderTab();
+  const group = G;
+  group.data.locks = group.data.locks || {};
+  group.data.locks[key] = !group.data.locks[key];
+  await save(group);
+  if (G === group) renderTab();
 }
 
 async function togglePending(key) {
-  G.data.pending = G.data.pending || {};
-  G.data.pending[key] = !G.data.pending[key];
-  await save(); renderTab();
+  const group = G;
+  group.data.pending = group.data.pending || {};
+  group.data.pending[key] = !group.data.pending[key];
+  await save(group);
+  if (G === group) renderTab();
 }
 
 const TABS = [
@@ -37,12 +41,16 @@ const TABS = [
   ['story', '故事宇宙'],
 ];
 
-export async function renderWorkspace(app, id, initialTab = 'people') {
+export async function renderWorkspace(app, id, initialTab = 'people', isCurrent = () => true) {
   app.innerHTML = `<div class="empty-state"><div class="big">⏳</div>加载中…</div>`;
   try {
-    G = await api.groups.get(id);
+    const group = await api.groups.get(id);
+    if (!isCurrent()) return;
+    G = group;
   } catch (e) {
-    app.innerHTML = `<div class="empty-state">加载失败：${esc(e.message)}<br><br><button class="btn btn-ghost" onclick="location.hash=''">返回</button></div>`;
+    if (!isCurrent()) return;
+    app.innerHTML = `<div class="empty-state">加载失败：${esc(e.message)}<br><br><button class="btn btn-ghost" id="workspace-back">返回</button></div>`;
+    $('#workspace-back').onclick = () => { location.hash = ''; };
     return;
   }
   currentTab = TABS.find(([k]) => k === initialTab) ? initialTab : 'people';
@@ -111,27 +119,35 @@ function renderSidebar() {
 }
 
 function openShareMenu() {
+  const group = G;
   const close = modal(`<h3>分享 / 导出</h3>
     <div class="share-menu">
       <button class="btn btn-ghost" data-s="link">🔗 复制对外链接</button>
       <button class="btn btn-ghost" data-s="card">🪪 生成成团卡</button>
       <button class="btn btn-ghost" data-s="md">📄 导出企划书 (.md)</button>
-      <button class="btn btn-ghost" data-s="json">⤓ 导出数据 (.json)</button>
+      <button class="btn btn-ghost" data-s="json">⤓ 完整备份 (.json)</button>
     </div>`, {
     onMount: (mask) => {
       const act = {
-        link: () => copyText(`${location.origin}/g/${G.shareId}`),
-        card: () => showGroupCard(G),
-        md: () => download(`${G.data.concept.name}-企划书.md`, buildMarkdown(G.data), 'text/markdown;charset=utf-8'),
-        json: () => download(`${G.data.concept.name}-数据.json`, JSON.stringify(G.data, null, 2), 'application/json;charset=utf-8'),
+        link: () => copyText(`${location.origin}/g/${group.shareId}`),
+        card: () => showGroupCard(group),
+        md: () => download(`${group.data.concept.name}-企划书.md`, buildMarkdown(group.data), 'text/markdown;charset=utf-8'),
+        json: async () => {
+          const backup = await api.backups.get(group.id);
+          download(`${group.data.concept.name}-完整备份.json`, JSON.stringify(backup, null, 2), 'application/json;charset=utf-8');
+        },
       };
-      mask.querySelectorAll('[data-s]').forEach((b) => b.onclick = () => { act[b.dataset.s](); close(); });
+      mask.querySelectorAll('[data-s]').forEach((b) => b.onclick = async () => {
+        b.disabled = true;
+        try { await act[b.dataset.s](); close(); }
+        catch (err) { toast('导出失败：' + err.message, 3500); b.disabled = false; }
+      });
     },
   });
 }
 
-async function save() {
-  await api.groups.update(G.id, G.data);
+async function save(group = G) {
+  await api.groups.update(group.id, group.data);
 }
 
 // 人物设定是否完成：全员都已生成成长经历
@@ -204,29 +220,31 @@ async function onFieldAction(e) {
 }
 
 function renameField(btn) {
+  const group = G;
   const path = btn.dataset.rename;
   openRename({
     kind: btn.dataset.kind,
     context: rollContext(),
-    current: getPath(G.data, path),
+    current: getPath(group.data, path),
     gender: btn.dataset.gender || '',
     target: btn.dataset.target || '',
-    existing: [G.data.concept.name, ...G.data.concept.members.map((m) => m.codename)],
+    existing: [group.data.concept.name, ...group.data.concept.members.map((m) => m.codename)],
     onPick: async (name) => {
-      setPath(G.data, path, name);
+      setPath(group.data, path, name);
       // 同步骨架里的艺名，保持全局一致
       const m = path.match(/^members\.(\d+)\.codename$/);
-      if (m && G.data.concept.members[m[1]]) G.data.concept.members[m[1]].codename = name;
-      if (path === 'concept.name') $('.ws-banner h1').textContent = name;
-      await save();
+      if (m && group.data.concept.members[m[1]]) group.data.concept.members[m[1]].codename = name;
+      if (G === group && path === 'concept.name') $('.ws-banner h1').textContent = name;
+      await save(group);
       toast('已更名');
-      renderTab();
+      if (G === group) renderTab();
     },
   });
 }
 
 function editField(path, label) {
-  const v = getPath(G.data, path);
+  const group = G;
+  const v = getPath(group.data, path);
   const isArr = Array.isArray(v);
   const text = isArr ? v.join('\n') : String(v ?? '');
   modal(`<h3>编辑 · ${esc(label)}</h3>
@@ -237,20 +255,22 @@ function editField(path, label) {
       $('[data-x]', mask).onclick = close;
       $('[data-ok]', mask).onclick = async () => {
         const nv = $('#edit-ta', mask).value.trim();
-        setPath(G.data, path, isArr ? nv.split('\n').map((s) => s.trim()).filter(Boolean) : nv);
-        await save();
+        setPath(group.data, path, isArr ? nv.split('\n').map((s) => s.trim()).filter(Boolean) : nv);
+        await save(group);
         close();
         toast('已保存');
-        renderTab();
+        if (G === group) renderTab();
       };
     } });
 }
 
 function rollField(path, label) {
+  const group = G;
   const segs = path.split('.');
   const fieldKey = segs[segs.length - 1];
-  const target = segs[0] === 'members' ? G.data.members[Number(segs[1])] : getPath(G.data, segs.slice(0, -1).join('.'));
-  const currentValue = getPath(G.data, path);
+  const target = segs[0] === 'members' ? group.data.members[Number(segs[1])] : getPath(group.data, segs.slice(0, -1).join('.'));
+  const currentValue = getPath(group.data, path);
+  const context = rollContext();
 
   const close = modal(`<h3>🎲 重新生成 · ${esc(label)}</h3>
     <div class="reroll-old">${esc(Array.isArray(currentValue) ? currentValue.join('、') : currentValue)}</div>
@@ -269,7 +289,7 @@ function rollField(path, label) {
         $('[data-again]', mask).disabled = true;
         try {
           const r = await api.stage('reroll', {
-            context: rollContext(), target, fieldKey, fieldLabel: label,
+            context, target, fieldKey, fieldLabel: label,
             currentValue, hint: $('#rr-hint', mask).value.trim(),
           });
           newValue = r.value;
@@ -284,11 +304,11 @@ function rollField(path, label) {
       $('[data-again]', mask).onclick = run;
       $('[data-ok]', mask).onclick = async () => {
         if (Array.isArray(currentValue) && !Array.isArray(newValue)) newValue = String(newValue).split(/[、,，\n]/).map((s) => s.trim()).filter(Boolean);
-        setPath(G.data, path, newValue);
-        await save();
+        setPath(group.data, path, newValue);
+        await save(group);
         closeFn();
         toast('已采用新设定');
-        renderTab();
+        if (G === group) renderTab();
       };
       run();
     } });
@@ -314,8 +334,8 @@ function nodeHead(titleHtml, key, { regen = null } = {}) {
 // ── 模块级重新生成 ──
 function feedbackModal(title, subtitle, hintPlaceholder) {
   return new Promise((resolve) => {
-    modal(`<h3>${title}</h3>
-      ${subtitle ? `<p class="muted">${subtitle}</p>` : ''}
+    modal(`<h3>${esc(title)}</h3>
+      ${subtitle ? `<p class="muted">${esc(subtitle)}</p>` : ''}
       <label class="field"><input type="text" id="fb-hint" placeholder="${esc(hintPlaceholder)}"></label>
       <div class="m-foot">
         <button class="btn btn-ghost" data-x>取消</button>
@@ -329,33 +349,38 @@ function feedbackModal(title, subtitle, hintPlaceholder) {
 }
 
 async function regenModule(moduleKey) {
-  const d = G.data;
+  const group = G;
+  const d = group.data;
 
   if (moduleKey.startsWith('members.')) {
     const idx = Number(moduleKey.split('.')[1]);
     const sk = d.concept.members[idx];
     const feedback = await feedbackModal(`🔄 重构「${sk.codename}」`, '重新生成该成员完整档案，当前内容将被覆盖。', '方向提示（可选），例如：更内敛 / 加入舞者背景');
     if (feedback === null) return;
+    if (G !== group) return;
     $('#tab-content').innerHTML = `<div class="card" style="text-align:center;padding:60px"><div class="spinner" style="width:34px;height:34px;border-width:4px;margin:0 auto 18px"></div><h2>正在重构「${esc(sk.codename)}」…</h2></div>`;
     try {
       d.members[idx] = await api.stage('member', { concept: d.concept, allMembers: d.concept.members, member: sk, feedback });
-      await save(); toast(`${sk.codename} 档案已重构`);
+      await save(group); toast(`${sk.codename} 档案已重构`);
     } catch (e) { toast('生成失败：' + e.message, 3000); }
-    return renderTab();
+    if (G === group) renderTab();
+    return;
   }
 
   if (moduleKey === 'concept') {
     const feedback = await feedbackModal('🔄 重构总设定', '重新生成团体设定，成员阵容结构保持不变。', '方向提示（可选），例如：更暗黑 / 加入电子朋克元素');
     if (feedback === null) return;
+    if (G !== group) return;
     $('#tab-content').innerHTML = `<div class="card" style="text-align:center;padding:60px"><div class="spinner" style="width:34px;height:34px;border-width:4px;margin:0 auto 18px"></div><h2>正在重构总设定…</h2></div>`;
     try {
       const backup = d.concept.members;
       const result = await api.stage('concept', { input: d.input, chosen: { name: d.concept.name, concept: d.concept.concept, vibe: d.concept.vibe }, feedback });
       Object.assign(d.concept, result);
       d.concept.members = backup;
-      await save(); toast('总设定已重构');
+      await save(group); toast('总设定已重构');
     } catch (e) { toast('生成失败：' + e.message, 3000); }
-    return renderTab();
+    if (G === group) renderTab();
+    return;
   }
 
   const names = { relations: '关系网络', story: '故事线', operations: '运营方案' };
@@ -369,9 +394,9 @@ async function regenModule(moduleKey) {
       operations: { concept: d.concept, members: d.members, relations: d.relations, story: d.story, positioning: d.input?.positioning, audience: d.input?.audience },
     };
     d[moduleKey] = await api.stage(moduleKey, payloads[moduleKey]);
-    await save(); toast('已更新');
+    await save(group); toast('已更新');
   } catch (e) { toast('生成失败：' + e.message, 3000); }
-  renderTab();
+  if (G === group) renderTab();
 }
 
 // ── Tab 导航 ──
@@ -468,6 +493,7 @@ function renderWorldTab(el, d) {
 
 // ── 人物设定 Tab（杂志编辑部版式） ──
 function renderMemberCards(el, m, i) {
+  const group = G;
   const d = G.data;
   const c = d.concept;
   const mKey = `members.${i}`;
@@ -564,7 +590,10 @@ function renderMemberCards(el, m, i) {
   el.querySelectorAll('[data-bio]').forEach((b) => b.onclick = () => openBioModal(Number(b.dataset.bio)));
 
   // 形象图：上传 / 生成 / 设主图 / 删除
-  const reload = async () => { G = await api.groups.get(G.id); renderTab(); };
+  const reload = async () => {
+    const updated = await api.groups.get(group.id);
+    if (G === group) { G = updated; renderTab(); }
+  };
   const ap = m.appearance || {};
   const genPrompt = `${m.codename}，${[ap.face, ap.hair, ap.eyes].filter(Boolean).join('，')}，日常穿搭：${m.fashion || ''}，全身立绘，时尚插画风格，纯白背景，超精细`;
   const upBtn = el.querySelector('#mc-upload');
@@ -575,7 +604,7 @@ function renderMemberCards(el, m, i) {
       const f = inp.files[0]; if (!f) return;
       if (f.size > 15 * 1024 * 1024) return toast('图片超过 15MB');
       const rd = new FileReader();
-      rd.onload = async () => { try { const img = await api.images.upload(G.id, m.codename, rd.result); if (!primary) await api.images.setPrimary(img.id); toast('已上传'); await reload(); } catch (e) { toast('上传失败：' + e.message, 3000); } };
+      rd.onload = async () => { try { const img = await api.images.upload(group.id, m.codename, rd.result); if (!primary) await api.images.setPrimary(img.id); toast('已上传'); await reload(); } catch (e) { toast('上传失败：' + e.message, 3000); } };
       rd.readAsDataURL(f);
     };
     inp.click();
@@ -583,7 +612,7 @@ function renderMemberCards(el, m, i) {
   const genBtn = el.querySelector('#mc-gen');
   if (genBtn) genBtn.onclick = async () => {
     genBtn.disabled = true; genBtn.innerHTML = '<span class="spinner"></span> 生成中…';
-    try { const img = await api.images.generate(G.id, m.codename, genPrompt, '1024x1536', 'medium'); if (!primary) await api.images.setPrimary(img.id); toast('已生成'); await reload(); }
+    try { const img = await api.images.generate(group.id, m.codename, genPrompt, '1024x1536', 'medium'); if (!primary) await api.images.setPrimary(img.id); toast('已生成'); await reload(); }
     catch (e) { toast('生成失败：' + e.message, 4000); genBtn.disabled = false; genBtn.textContent = '✦ 生成形象'; }
   };
   el.querySelector('.mc-gallery')?.addEventListener('click', async (e) => {
@@ -675,27 +704,29 @@ function openBioModal(i) {
 }
 
 async function generateProfile(i) {
-  const d = G.data;
+  const group = G;
+  const d = group.data;
   const m = d.members[i];
   toast(`正在补全 ${m.codename} 的艺人资料…`, 60000);
   try {
     const prof = await api.stage('profile', { concept: d.concept, member: m });
     d.members[i].profile = prof;
-    await save();
+    await save(group);
     $('.toast')?.remove();
     toast(`${m.codename} 资料卡已生成`);
   } catch (e) {
     $('.toast')?.remove();
     toast('生成失败：' + e.message, 3500);
   }
-  renderTab();
+  if (G === group) renderTab();
 }
 
 async function generateHistory(onlyIndex = null) {
+  const group = G;
   const el = $('#tab-content');
-  const d = G.data;
+  const d = group.data;
   el.innerHTML = `<div class="card" style="text-align:center;padding:50px"><div class="spinner" style="width:30px;height:30px;border-width:4px;margin:0 auto 14px"></div>
-    <h2 id="hist-status">正在书写${onlyIndex === null ? '全员' : d.members[onlyIndex].codename + ' 的'}经历…</h2>
+    <h2 id="hist-status">正在书写${onlyIndex === null ? '全员' : esc(d.members[onlyIndex].codename) + ' 的'}经历…</h2>
     <p class="muted">约 1-2 分钟</p></div>`;
   try {
     const targets = d.members.map((m, i) => ({ m, i })).filter((x) => onlyIndex === null || x.i === onlyIndex);
@@ -709,20 +740,21 @@ async function generateHistory(onlyIndex = null) {
       if (!d.history) d.history = [];
       d.history[i] = h;
       done++;
-      const st = $('#hist-status');
+      const st = G === group ? $('#hist-status') : null;
       if (st && targets.length > 1) st.textContent = `正在书写全员经历…（${done}/${targets.length}）`;
     });
-    await save();
+    await save(group);
     toast('经历已生成');
   } catch (e) {
     toast('生成失败：' + e.message, 3500);
   }
-  renderTab();
+  if (G === group) renderTab();
 }
 
 async function generateOperations() {
+  const group = G;
   const el = $('#tab-content');
-  const d = G.data;
+  const d = group.data;
   el.innerHTML = `<div class="card" style="text-align:center;padding:50px"><div class="spinner" style="width:30px;height:30px;border-width:4px;margin:0 auto 14px"></div>
     <h2>正在制定运营方案…</h2><p class="muted">约 1-2 分钟</p></div>`;
   try {
@@ -732,19 +764,20 @@ async function generateOperations() {
       story: d.story || null,
       positioning: d.input?.positioning, audience: d.input?.audience,
     });
-    await save();
+    await save(group);
     toast('运营方案已生成');
   } catch (e) {
     toast('生成失败：' + e.message, 3500);
   }
-  renderTab();
+  if (G === group) renderTab();
 }
 
 async function setProgress(key, val) {
-  G.data.progress = { ...(G.data.progress || {}), [key]: val };
-  await save();
+  const group = G;
+  group.data.progress = { ...(group.data.progress || {}), [key]: val };
+  await save(group);
   toast(val ? '已确认' : '已取消确认');
-  renderTab();
+  if (G === group) renderTab();
 }
 
 function memberColor(codename) {

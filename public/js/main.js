@@ -12,7 +12,7 @@ api.config().then((c) => Object.assign(appConfig, c)).catch(() => {});
 
 const ENABLE_DASH_COVERS = new URLSearchParams(location.search).get('covers') === '1';
 
-async function renderDashboard() {
+async function renderDashboard(isCurrent = () => true) {
   app.innerHTML = `
     <div class="dash-hero">
       <div><div class="en-label">PROJECTS</div><h1>我的企划</h1><p class="sub">每一个团，都从一个想法开始</p></div>
@@ -31,9 +31,11 @@ async function renderDashboard() {
   try {
     groups = await api.groups.list();
   } catch (e) {
+    if (!isCurrent()) return;
     $('#group-list').innerHTML = `<div class="empty-state">加载失败：${esc(e.message)}</div>`;
     return;
   }
+  if (!isCurrent()) return;
 
   if (!groups.length) {
     $('#group-list').innerHTML = `
@@ -41,8 +43,9 @@ async function renderDashboard() {
         <div class="big">🎤</div>
         <p style="font-size:17px;font-weight:600;color:var(--ink-2)">还没有企划</p>
         <p style="margin:6px 0 22px">输入一个想法，3 分钟出道一个团</p>
-        <button class="btn btn-primary btn-big" onclick="location.hash='#/new'">✦ 创建第一个偶像团</button>
+        <button class="btn btn-primary btn-big" id="btn-first-group">✦ 创建第一个偶像团</button>
       </div>`;
+    $('#btn-first-group').onclick = () => { location.hash = '#/new'; };
     return;
   }
 
@@ -83,10 +86,14 @@ function importJSON() {
   input.accept = '.json';
   input.onchange = async () => {
     try {
-      const text = await input.files[0].text();
+      const file = input.files[0];
+      if (!file) return;
+      if (file.size > 200 * 1024 * 1024) throw new Error('备份文件超过 200MB');
+      const text = await file.text();
       const data = JSON.parse(text);
-      if (!data.concept?.name) throw new Error('文件里没有有效的企划数据');
-      const group = await api.groups.create(data);
+      const group = data.format === 'starform-group-backup'
+        ? await api.backups.restore(data)
+        : await api.groups.create(data);
       toast(`已导入「${group.name}」`);
       location.hash = `#/group/${group.id}`;
     } catch (e) {
@@ -97,16 +104,19 @@ function importJSON() {
 }
 
 // ── 路由 ──
-async function route() {
+let routeVersion = 0;
+
+async function route(version) {
+  const isCurrent = () => version === routeVersion;
   const ta = $('#topbar-actions'); if (ta) ta.innerHTML = '';
   const hash = location.hash;
   const mGroup = hash.match(/^#\/group\/([\w-]+)(?:\?tab=([\w-]+))?/);
   const mOps = hash.match(/^#\/ops\/([\w-]+)(?:\?tab=([\w-]+))?/);
   document.body.classList.toggle('ws-mode', !!mGroup || !!mOps);
   if (hash === '#/new') return renderWizard(app);
-  if (mOps) return renderOps(app, mOps[1], mOps[2]);
-  if (mGroup) return renderWorkspace(app, mGroup[1], mGroup[2]);
-  return renderDashboard();
+  if (mOps) return renderOps(app, mOps[1], mOps[2], isCurrent);
+  if (mGroup) return renderWorkspace(app, mGroup[1], mGroup[2], isCurrent);
+  return renderDashboard(isCurrent);
 }
 
 $('.logo')?.addEventListener('click', () => { location.hash = ''; });
@@ -122,7 +132,8 @@ function showFatal(err) {
 }
 
 function runRoute() {
-  route().catch(showFatal);
+  const version = ++routeVersion;
+  route(version).catch((err) => { if (version === routeVersion) showFatal(err); });
 }
 
 window.addEventListener('hashchange', runRoute);
