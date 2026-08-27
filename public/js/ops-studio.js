@@ -3,6 +3,7 @@
 // 生成进行中切走标签，完成后若已回到本工坊自动刷新，否则 toast 提醒。
 import { api } from './api.js';
 import { $, esc, toast, copyText } from './ui.js';
+import { t } from './i18n.js';
 
 const KIND_META = {
   video: {
@@ -43,27 +44,27 @@ export function renderStudio(el, O, kind, openWork, reloadWorks) {
   const busy = !!O.generating[kind];
   const curAngle = O.angle[kind] || '';
 
-  const angleChips = [['', '🎲 全部角度']].concat((meta.angles || []).map((a) => [a, a]))
-    .map(([v, label]) => `<button class="angle-chip${v === curAngle ? ' on' : ''}" data-angle="${esc(v)}" ${v && ANGLE_HINT[v] ? `title="${esc(ANGLE_HINT[v])}"` : ''} ${busy ? 'disabled' : ''}>${esc(label)}</button>`).join('');
+  const angleChips = [['', t('🎲 全部角度')]].concat((meta.angles || []).map((a) => [a, t(a)]))
+    .map(([v, label]) => `<button class="angle-chip${v === curAngle ? ' on' : ''}" data-angle="${esc(v)}" ${v && ANGLE_HINT[v] ? `title="${esc(t(ANGLE_HINT[v]))}"` : ''} ${busy ? 'disabled' : ''}>${esc(label)}</button>`).join('');
 
   el.innerHTML = `<div class="ops-page">
     <header class="ops-page-head">
       <div class="ops-page-head-main">
         <div class="ops-kicker">${meta.en}</div>
-        <h1>${meta.title}</h1>
-        <p class="ops-sub">${meta.desc}</p>
+        <h1>${t(meta.title)}</h1>
+        <p class="ops-sub">${t(meta.desc)}</p>
       </div>
     </header>
     <div class="card st-gen-bar">
       <div class="st-angle">
-        <span class="st-angle-lbl">创作角度 <small>选一个方法论方向集中发力，或全部混合</small></span>
+        <span class="st-angle-lbl">${t('创作角度')} <small>${t('选一个方法论方向集中发力，或全部混合')}</small></span>
         <div class="angle-row">${angleChips}</div>
       </div>
       <div class="field-row" style="align-items:flex-end;margin:14px 0 0">
-        <label class="field"><span class="field-label">额外要求 <small>（可留空）</small></span>
-          <input id="st-hint" type="text" placeholder="${esc(meta.placeholder)}" value="${esc(O.hints[kind] || '')}" ${busy ? 'disabled' : ''}></label>
+        <label class="field"><span class="field-label">${t('额外要求')} <small>${t('（可留空）')}</small></span>
+          <input id="st-hint" type="text" placeholder="${esc(t(meta.placeholder))}" value="${esc(O.hints[kind] || '')}" ${busy ? 'disabled' : ''}></label>
         <div class="field"><button class="btn btn-primary" id="st-gen" ${busy ? 'disabled' : ''}>
-          ${busy ? '<span class="spinner"></span> 生成中（约 1 分钟，可切去别的标签）…' : (topics ? '🎲 换一批选题' : '✦ 生成选题弹药库')}</button></div>
+          ${busy ? '<span class="spinner"></span> ' + t('生成中（约 1 分钟，可切去别的标签）…') : (topics ? t('🎲 换一批选题') : t('✦ 生成选题弹药库'))}</button></div>
       </div>
     </div>
     <div id="st-list">${topics ? topicsHTML(kind, topics) : ''}</div>
@@ -102,9 +103,9 @@ async function startGenerate(el, O, kind, openWork, reloadWorks) {
     const topics = r.topics || [];
     await api.studio.set(groupId, kind, topics);
     if (O.group?.id === groupId) O.topics[kind] = topics;
-    toast(`✅ ${meta.title}选题已生成`);
+    toast(t('✅ {title}选题已生成', { title: t(meta.title) }));
   } catch (e) {
-    toast(`${meta.title}生成失败：` + e.message, 3500);
+    toast(t('{title}生成失败：', { title: t(meta.title) }) + e.message, 3500);
   }
   if (O.group?.id !== groupId) return;
   O.generating[kind] = false;
@@ -115,43 +116,43 @@ async function startGenerate(el, O, kind, openWork, reloadWorks) {
 }
 
 function topicsHTML(kind, topics) {
-  const field = (lbl, val, cls = '') => val ? `<div class="topic-field ${cls}"><span class="tf-lbl">${lbl}</span><p>${esc(val)}</p></div>` : '';
+  const field = (lbl, val, cls = '') => val ? `<div class="topic-field ${cls}"><span class="tf-lbl">${t(lbl)}</span><p>${esc(val)}</p></div>` : '';
 
   if (kind === 'video') {
-    return `<div class="topic-grid">${topics.map((t, i) => {
-      const beats = Array.isArray(t.beats) ? t.beats.filter(Boolean) : [];
+    return `<div class="topic-grid">${topics.map((tp, i) => {
+      const beats = Array.isArray(tp.beats) ? tp.beats.filter(Boolean) : [];
       return `
       <div class="topic-card">
-        <div class="topic-head"><span class="badge">${esc(t.kind || '')}</span><span class="topic-format">${esc(t.format || '')}</span></div>
-        <b class="topic-title">${esc(t.title)}</b>
-        ${(t.members || []).length ? `<div class="topic-cast">👥 出演：${esc((t.members || []).join('、'))}</div>` : ''}
-        ${field('🪝 开头钩子（前3秒）', t.hook)}
-        ${field('🎬 一句话剧情', t.logline || t.desc)}
-        ${beats.length ? `<div class="topic-field"><span class="tf-lbl">🎞 分段脚本（起承转合）</span>
+        <div class="topic-head"><span class="badge">${esc(t(tp.kind || ''))}</span><span class="topic-format">${esc(t(tp.format || ''))}</span></div>
+        <b class="topic-title">${esc(tp.title)}</b>
+        ${(tp.members || []).length ? `<div class="topic-cast">${t('👥 出演：{names}', { names: esc((tp.members || []).join('、')) })}</div>` : ''}
+        ${field('🪝 开头钩子（前3秒）', tp.hook)}
+        ${field('🎬 一句话剧情', tp.logline || tp.desc)}
+        ${beats.length ? `<div class="topic-field"><span class="tf-lbl">${t('🎞 分段脚本（起承转合）')}</span>
           <ol class="topic-beats">${beats.map((b) => `<li>${esc(b)}</li>`).join('')}</ol></div>` : ''}
-        ${field('🎯 结尾爆点 / 评论区钩子', t.ending)}
-        ${field('🔥 为什么会火', t.why, 'topic-why')}
+        ${field('🎯 结尾爆点 / 评论区钩子', tp.ending)}
+        ${field('🔥 为什么会火', tp.why, 'topic-why')}
         <div class="topic-acts">
-          <button class="btn btn-primary btn-sm" data-save="${i}">📥 存为作品</button>
+          <button class="btn btn-primary btn-sm" data-save="${i}">${t('📥 存为作品')}</button>
         </div>
       </div>`;
     }).join('')}</div>
-    <p class="muted" style="margin-top:10px">选题会一直保留（刷新也在），直到你点"换一批"。每条已含完整起承转合，存为作品后可再一键生成逐镜分镜脚本（台词/字幕/运镜）。</p>`;
+    <p class="muted" style="margin-top:10px">${t('选题会一直保留（刷新也在），直到你点"换一批"。每条已含完整起承转合，存为作品后可再一键生成逐镜分镜脚本（台词/字幕/运镜）。')}</p>`;
   }
-  return `<div class="topic-grid">${topics.map((t, i) => `
+  return `<div class="topic-grid">${topics.map((tp, i) => `
     <div class="topic-card">
-      <div class="topic-head"><span class="badge">${esc(t.format || '')}</span><span class="topic-format">主角：${esc(t.member || '全员')}</span></div>
-      <b class="topic-title">${esc(t.title)}</b>
-      ${field('🪝 看点', t.hook)}
-      ${field('📝 内容 / 配图', t.outline)}
-      ${field('🔥 上头点', t.why, 'topic-why')}
-      ${t.copy ? `<div class="topic-field"><span class="tf-lbl">✍️ 成员语气文案（可直接发）</span>
-        <div class="prompt-block" style="font-family:inherit">${esc(t.copy)}<button class="copy-btn" data-copy="${esc(t.copy)}">复制</button></div></div>` : ''}
+      <div class="topic-head"><span class="badge">${esc(t(tp.format || ''))}</span><span class="topic-format">${t('主角：{name}', { name: esc(tp.member || t('全员')) })}</span></div>
+      <b class="topic-title">${esc(tp.title)}</b>
+      ${field('🪝 看点', tp.hook)}
+      ${field('📝 内容 / 配图', tp.outline)}
+      ${field('🔥 上头点', tp.why, 'topic-why')}
+      ${tp.copy ? `<div class="topic-field"><span class="tf-lbl">${t('✍️ 成员语气文案（可直接发）')}</span>
+        <div class="prompt-block" style="font-family:inherit">${esc(tp.copy)}<button class="copy-btn" data-copy="${esc(tp.copy)}">${t('复制')}</button></div></div>` : ''}
       <div class="topic-acts">
-        <button class="btn btn-primary btn-sm" data-save="${i}">📥 存为作品</button>
+        <button class="btn btn-primary btn-sm" data-save="${i}">${t('📥 存为作品')}</button>
       </div>
     </div>`).join('')}</div>
-  <p class="muted" style="margin-top:10px">选题会一直保留（刷新也在），直到你点"换一批"。</p>`;
+  <p class="muted" style="margin-top:10px">${t('选题会一直保留（刷新也在），直到你点"换一批"。')}</p>`;
 }
 
 function bindTopicActions(el, O, kind, openWork, reloadWorks) {
@@ -159,18 +160,18 @@ function bindTopicActions(el, O, kind, openWork, reloadWorks) {
   const topics = O.topics[kind];
   el.querySelectorAll('[data-copy]').forEach((b) => b.onclick = () => copyText(b.dataset.copy));
   el.querySelectorAll('[data-save]').forEach((b) => b.onclick = async () => {
-    const t = topics[Number(b.dataset.save)];
+    const tp = topics[Number(b.dataset.save)];
     const fields = kind === 'video'
-      ? { type: 'short_video', title: t.title, members: (t.members || []).join('，'), status: 'idea', content: { topic: t, hook: t.hook } }
-      : { type: 'daily', title: t.title, members: t.member || '', status: 'idea', content: { topic: t, hook: t.hook, copy: t.copy || '' } };
+      ? { type: 'short_video', title: tp.title, members: (tp.members || []).join('，'), status: 'idea', content: { topic: tp, hook: tp.hook } }
+      : { type: 'daily', title: tp.title, members: tp.member || '', status: 'idea', content: { topic: tp, hook: tp.hook, copy: tp.copy || '' } };
     b.disabled = true;
     try {
       await api.works.create(groupId, fields);
       if (O.group?.id === groupId) await reloadWorks();
-      b.textContent = '✔ 已存入作品库';
-      toast(`已存入作品库：${t.title}`);
+      b.textContent = t('✔ 已存入作品库');
+      toast(t('已存入作品库：{title}', { title: tp.title }));
     } catch (e) {
-      toast('保存失败：' + e.message, 3000);
+      toast(t('保存失败：') + e.message, 3000);
       b.disabled = false;
     }
   });

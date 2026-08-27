@@ -5,6 +5,7 @@ import { renderWizard } from './wizard.js';
 import { renderWorkspace } from './workspace.js';
 import { renderOps } from './ops.js';
 import { openSettings } from './settings-ui.js';
+import { t, fmtDate, mountLangSwitch } from './i18n.js';
 
 const app = $('#app');
 export const appConfig = { imageGen: false, imageModel: '' };
@@ -15,13 +16,13 @@ const ENABLE_DASH_COVERS = new URLSearchParams(location.search).get('covers') ==
 async function renderDashboard(isCurrent = () => true) {
   app.innerHTML = `
     <div class="dash-hero">
-      <div><div class="en-label">PROJECTS</div><h1>我的企划</h1><p class="sub">每一个团，都从一个想法开始</p></div>
+      <div><div class="en-label">PROJECTS</div><h1>${t('我的企划')}</h1><p class="sub">${t('每一个团，都从一个想法开始')}</p></div>
       <div class="spacer"></div>
-      <button class="btn btn-ghost" id="btn-settings" title="模型 API 绑定">⚙️ 模型设置</button>
-      <button class="btn btn-ghost" id="btn-import">导入 JSON</button>
-      <button class="btn btn-primary btn-big" id="btn-new">✦ 新企划</button>
+      <button class="btn btn-ghost" id="btn-settings" title="${t('模型 API 绑定')}">⚙️ ${t('模型设置')}</button>
+      <button class="btn btn-ghost" id="btn-import">${t('导入 JSON')}</button>
+      <button class="btn btn-primary btn-big" id="btn-new">✦ ${t('新企划')}</button>
     </div>
-    <div id="group-list"><div class="empty-state"><div class="big">⏳</div>加载中…</div></div>`;
+    <div id="group-list"><div class="empty-state"><div class="big">⏳</div>${t('加载中…')}</div></div>`;
 
   $('#btn-new').onclick = () => { location.hash = '#/new'; };
   $('#btn-import').onclick = importJSON;
@@ -32,7 +33,7 @@ async function renderDashboard(isCurrent = () => true) {
     groups = await api.groups.list();
   } catch (e) {
     if (!isCurrent()) return;
-    $('#group-list').innerHTML = `<div class="empty-state">加载失败：${esc(e.message)}</div>`;
+    $('#group-list').innerHTML = `<div class="empty-state">${t('加载失败：')}${esc(e.message)}</div>`;
     return;
   }
   if (!isCurrent()) return;
@@ -41,9 +42,9 @@ async function renderDashboard(isCurrent = () => true) {
     $('#group-list').innerHTML = `
       <div class="empty-state">
         <div class="big">🎤</div>
-        <p style="font-size:17px;font-weight:600;color:var(--ink-2)">还没有企划</p>
-        <p style="margin:6px 0 22px">输入一个想法，3 分钟出道一个团</p>
-        <button class="btn btn-primary btn-big" id="btn-first-group">✦ 创建第一个偶像团</button>
+        <p style="font-size:17px;font-weight:600;color:var(--ink-2)">${t('还没有企划')}</p>
+        <p style="margin:6px 0 22px">${t('输入一个想法，3 分钟出道一个团')}</p>
+        <button class="btn btn-primary btn-big" id="btn-first-group">✦ ${t('创建第一个偶像团')}</button>
       </div>`;
     $('#btn-first-group').onclick = () => { location.hash = '#/new'; };
     return;
@@ -63,10 +64,10 @@ async function renderDashboard(isCurrent = () => true) {
         <div class="gc-theme">${esc(g.theme)}</div>
         <div class="gc-concept">${esc(g.concept)}</div>
         <div class="gc-foot">
-          <span>${new Date(g.updatedAt).toLocaleDateString('zh-CN')}</span>
+          <span>${fmtDate(g.updatedAt)}</span>
           <div class="spacer"></div>
-          <a class="btn btn-ghost btn-sm" href="#/group/${esc(g.id)}" data-stop>企划台</a>
-          <a class="btn btn-primary btn-sm" href="#/ops/${esc(g.id)}" data-stop>运营</a>
+          <a class="btn btn-ghost btn-sm" href="#/group/${esc(g.id)}" data-stop>${t('企划台')}</a>
+          <a class="btn btn-primary btn-sm" href="#/ops/${esc(g.id)}" data-stop>${t('运营')}</a>
         </div>
       </div>
     </div>`;
@@ -88,16 +89,16 @@ function importJSON() {
     try {
       const file = input.files[0];
       if (!file) return;
-      if (file.size > 200 * 1024 * 1024) throw new Error('备份文件超过 200MB');
+      if (file.size > 200 * 1024 * 1024) throw new Error(t('备份文件超过 200MB'));
       const text = await file.text();
       const data = JSON.parse(text);
       const group = data.format === 'starform-group-backup'
         ? await api.backups.restore(data)
         : await api.groups.create(data);
-      toast(`已导入「${group.name}」`);
+      toast(t('已导入「{name}」', { name: group.name }));
       location.hash = `#/group/${group.id}`;
     } catch (e) {
-      toast('导入失败：' + e.message, 3000);
+      toast(t('导入失败：') + e.message, 3000);
     }
   };
   input.click();
@@ -126,7 +127,7 @@ function showFatal(err) {
   if (!app) return;
   app.innerHTML = `<div class="empty-state">
     <div class="big">⚠️</div>
-    <p style="font-size:17px;font-weight:700;color:var(--ink)">页面初始化失败</p>
+    <p style="font-size:17px;font-weight:700;color:var(--ink)">${t('页面初始化失败')}</p>
     <p style="margin-top:8px;color:var(--err)">${esc(err?.message || err)}</p>
   </div>`;
 }
@@ -137,4 +138,5 @@ function runRoute() {
 }
 
 window.addEventListener('hashchange', runRoute);
+mountLangSwitch();
 runRoute();

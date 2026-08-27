@@ -1,19 +1,20 @@
 // 成团卡 — Canvas 绘制可分享的卡片图
 import { modal, download, esc } from './ui.js';
+import { t } from './i18n.js';
 
 export function showGroupCard(G) {
   const canvas = document.createElement('canvas');
   drawCard(canvas, G);
   const dataUrl = canvas.toDataURL('image/png');
-  modal(`<h3>🎴 成团卡</h3>
-    <img src="${dataUrl}" style="width:100%;border-radius:14px;box-shadow:var(--shadow-m)" alt="成团卡">
+  modal(`<h3>${t('🎴 成团卡')}</h3>
+    <img src="${dataUrl}" style="width:100%;border-radius:14px;box-shadow:var(--shadow-m)" alt="${t('成团卡')}">
     <div class="m-foot">
-      <button class="btn btn-ghost" data-x>关闭</button>
-      <button class="btn btn-primary" data-dl>⬇ 保存图片</button>
+      <button class="btn btn-ghost" data-x>${t('关闭')}</button>
+      <button class="btn btn-primary" data-dl>${t('⬇ 保存图片')}</button>
     </div>`,
     { onMount: (mask, close) => {
       mask.querySelector('[data-x]').onclick = close;
-      mask.querySelector('[data-dl]').onclick = () => download(`${G.data.concept.name}-成团卡.png`, dataUrl);
+      mask.querySelector('[data-dl]').onclick = () => download(t('{name}-成团卡.png', { name: G.data.concept.name }), dataUrl);
     } });
 }
 
@@ -89,7 +90,7 @@ function drawCard(canvas, G) {
     ctx.fillText(m.codename, x, orbY + 116);
     ctx.fillStyle = 'rgba(255,255,255,.5)';
     ctx.font = zh(21, 400);
-    ctx.fillText(m.archetype, x, orbY + 152);
+    ctx.fillText(t(m.archetype), x, orbY + 152);
   });
 
   // 气质标签
@@ -111,7 +112,7 @@ function drawCard(canvas, G) {
   // 口号
   ctx.fillStyle = 'rgba(255,255,255,.55)';
   ctx.font = `italic 400 30px "MiSans", "PingFang SC", "Microsoft YaHei UI", sans-serif`;
-  wrapText(ctx, `「${c.slogan}」`, W / 2, 1040, W - 200, 44);
+  wrapText(ctx, t('「{slogan}」', { slogan: c.slogan }), W / 2, 1040, W - 200, 44);
 
   // 底部
   ctx.strokeStyle = 'rgba(255,255,255,.14)';
@@ -121,7 +122,7 @@ function drawCard(canvas, G) {
   ctx.stroke();
   ctx.fillStyle = 'rgba(255,255,255,.45)';
   ctx.font = zh(26, 600);
-  ctx.fillText('✦ 成团 StarForm · 虚拟偶像工坊', W / 2, H - 88);
+  ctx.fillText(t('✦ 成团 StarForm · 虚拟偶像工坊'), W / 2, H - 88);
 }
 
 function hexA(hex, a) {

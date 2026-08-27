@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS images (
   kind TEXT NOT NULL,
   filename TEXT NOT NULL,
   is_primary INTEGER NOT NULL DEFAULT 0,
+  archived INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS studio (
@@ -64,6 +65,11 @@ CREATE TABLE IF NOT EXISTS app_settings (
   updated_at TEXT NOT NULL
 );
 `);
+
+// 迁移：旧库补 images.archived 列（归档标记）
+if (!db.prepare("SELECT 1 FROM pragma_table_info('images') WHERE name = 'archived'").get()) {
+  db.exec('ALTER TABLE images ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+}
 
 export const uid = (n = 12) => crypto.randomBytes(n).toString('base64url').slice(0, n);
 const now = () => new Date().toISOString();
@@ -194,5 +200,6 @@ export const Images = {
       db.prepare('UPDATE images SET is_primary = 1 WHERE id = ?').run(id);
     });
   },
+  setArchived: (id, archived) => db.prepare('UPDATE images SET archived = ? WHERE id = ?').run(archived ? 1 : 0, id),
   delete: (id) => db.prepare('DELETE FROM images WHERE id = ?').run(id),
 };

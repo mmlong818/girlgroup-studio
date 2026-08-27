@@ -10,13 +10,14 @@ import { STAGES } from './prompts.mjs';
 import { runJSON } from './glm.mjs';
 import { Groups, Images, Works, Studio, UPLOAD_DIR } from './db.mjs';
 import { saveDataUrl, generateImage, generateWithReferences, imageGenAvailable } from './images.mjs';
-import { publicView, save as saveSettings, getImage, getText } from './settings.mjs';
+import { publicView, save as saveSettings, getImage, getText, fetchRemoteModels } from './settings.mjs';
 import {
   validateBatchWorks,
   validateBackup,
   validateGroupData,
   validateImageGenerate,
   validateImageUpload,
+  validateModelListRequest,
   validateSettingsPatch,
   validateStageRequest,
   validateStageResult,
@@ -140,7 +141,7 @@ async function readJSONBody(req, limit) {
 function groupSummary(row) {
   let d = {};
   try { d = JSON.parse(row.data); } catch { /* 损坏数据按空处理 */ }
-  const imgs = Images.listByGroup(row.id);
+  const imgs = Images.listByGroup(row.id).filter((i) => !i.archived);
   const cover = imgs.find((i) => i.member === '' && i.is_primary) || imgs.find((i) => i.is_primary) || null;
   return {
     cover: cover ? `/uploads/${cover.filename}` : null,
@@ -173,7 +174,7 @@ function groupFull(row) {
     ...groupSummary(row),
     data: JSON.parse(row.data),
     images: Images.listByGroup(row.id).map((i) => ({
-      id: i.id, member: i.member, kind: i.kind, url: `/uploads/${i.filename}`, isPrimary: !!i.is_primary,
+      id: i.id, member: i.member, kind: i.kind, url: `/uploads/${i.filename}`, isPrimary: !!i.is_primary, archived: !!i.archived,
     })),
   };
 }
@@ -205,6 +206,7 @@ async function buildBackup(row) {
       member: image.member,
       kind: image.kind,
       isPrimary: Boolean(image.is_primary),
+      archived: Boolean(image.archived),
       dataUrl: `data:${imageMime(image.filename)};base64,${bytes.toString('base64')}`,
     };
   }));
@@ -232,6 +234,7 @@ async function restoreBackup(backup) {
       files.push(filename);
       const image = Images.create(row.id, source.member || '', source.kind, filename);
       if (source.isPrimary) primaryIds.push(image.id);
+      if (source.archived && !source.isPrimary) Images.setArchived(image.id, true);
     }
     primaryIds.forEach((id) => Images.setPrimary(id));
     return Groups.byId(row.id);
@@ -256,7 +259,15 @@ async function handleAPI(req, res, urlPath) {
     const request = validateStageRequest(body, STAGES);
     const stage = STAGES[request.stage];
     console.log(`[${new Date().toLocaleTimeString()}] 生成: ${request.stage}${request.payload.member?.codename ? ' / ' + request.payload.member.codename : ''}`);
-    const result = await runJSON(stage.system, stage.buildUser(request.payload), { model: stage.model });
+    const CONTENT_LANG = {
+      'zh-TW': '繁體中文（台灣用語）',
+      en: 'English',
+      ja: '日本語',
+    };
+    const system = CONTENT_LANG[request.lang]
+      ? `${stage.system}\n\n【输出语言】JSON 的所有文本字段值必须使用${CONTENT_LANG[request.lang]}书写；JSON 键名保持不变。`
+      : stage.system;
+    const result = await runJSON(system, stage.buildUser(request.payload), { model: stage.model });
     return ok(res, { result: validateStageResult(request.stage, result) });
   }
 
@@ -364,15 +375,26 @@ async function handleAPI(req, res, urlPath) {
     if (isPoster) {
       // 海报：收集成员主图作为参考（API 最多接受 4 张）
       const allImgs = Images.listByGroup(body.groupId);
-      const refs = allImgs.filter((i) => i.member && i.is_primary).slice(0, 4);
+      const refs = allImgs.filter((i) => i.member && i.is_primary && !i.archived).slice(0, 4);
       const refPaths = refs.map((i) => path.join(UPLOAD_DIR, i.filename));
       console.log(`[${new Date().toLocaleTimeString()}] 生图: 团体海报 (${body.size || '1536x1024'})${refs.length ? ` · 参考 ${refs.length} 位成员主图` : ''}`);
       filename = refs.length
         ? await generateWithReferences(body.prompt, refPaths, { size: body.size || '1536x1024', quality: body.quality })
         : await generateImage(body.prompt, { size: body.size || '1536x1024', quality: body.quality });
     } else {
-      console.log(`[${new Date().toLocaleTimeString()}] 生图: ${body.member} (${body.size || '1024x1536'})`);
-      filename = await generateImage(body.prompt, { size: body.size, quality: body.quality });
+      // 成员生图：默认携带角色参考（主图 + 最新造型设定图，最多 4 张），可用 useRef:false 关闭
+      let refs = [];
+      if (body.useRef !== false) {
+        const mine = Images.listByGroup(body.groupId).filter((i) => i.member === body.member && !i.archived);
+        refs = mine.filter((i) => i.kind === 'design').slice(0, 3);
+        const primary = mine.find((i) => i.is_primary);
+        if (primary && !refs.some((i) => i.id === primary.id)) refs.unshift(primary);
+        refs = refs.slice(0, 4);
+      }
+      console.log(`[${new Date().toLocaleTimeString()}] 生图: ${body.member} (${body.size || '1024x1536'})${refs.length ? ` · 参考 ${refs.length} 张` : ''}`);
+      filename = refs.length
+        ? await generateWithReferences(body.prompt, refs.map((i) => path.join(UPLOAD_DIR, i.filename)), { size: body.size || '1024x1536', quality: body.quality })
+        : await generateImage(body.prompt, { size: body.size, quality: body.quality });
     }
     try {
       const img = Images.create(body.groupId, body.member || '', body.kind || 'gen', filename);
@@ -383,13 +405,25 @@ async function handleAPI(req, res, urlPath) {
     }
   }
   if (seg[1] === 'images' && seg[2] && seg[3] === 'primary' && req.method === 'POST') {
-    if (!Images.byId(seg[2])) return fail(res, 404, '图片不存在');
+    const img = Images.byId(seg[2]);
+    if (!img) return fail(res, 404, '图片不存在');
+    if (img.archived) Images.setArchived(img.id, false); // 设为主图即视为恢复
     Images.setPrimary(seg[2]);
+    return ok(res, {});
+  }
+  // 归档 / 恢复：主图不可归档；删除前必须先归档
+  if (seg[1] === 'images' && seg[2] && seg[3] === 'archive' && req.method === 'POST') {
+    const img = Images.byId(seg[2]);
+    if (!img) return fail(res, 404, '图片不存在');
+    const archived = Boolean(body.archived);
+    if (archived && img.is_primary) return fail(res, 400, '主图不能归档，请先将其他图设为主图');
+    Images.setArchived(img.id, archived);
     return ok(res, {});
   }
   if (seg[1] === 'images' && seg[2] && req.method === 'DELETE') {
     const img = Images.byId(seg[2]);
     if (img) {
+      if (!img.archived) return fail(res, 400, '请先归档，再从归档区删除');
       Images.delete(img.id);
       try { unlinkSync(path.join(UPLOAD_DIR, img.filename)); } catch { /* 文件已不存在则跳过 */ }
     }
@@ -399,6 +433,10 @@ async function handleAPI(req, res, urlPath) {
   // ── 配置探测 ──
   if (urlPath === '/api/config' && req.method === 'GET') {
     return ok(res, { textGen: textGenAvailable(), textModel: getText().modelId, imageGen: imageGenAvailable(), imageModel: getImage().modelId });
+  }
+  if (urlPath === '/api/settings/models' && req.method === 'POST') {
+    validateModelListRequest(body);
+    return ok(res, { models: await fetchRemoteModels(body) });
   }
   if (urlPath === '/api/settings') {
     if (req.method === 'GET') return ok(res, { settings: publicView() });

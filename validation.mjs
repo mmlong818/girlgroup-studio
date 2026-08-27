@@ -76,7 +76,8 @@ export function validateStageRequest(body, stages) {
   if (!stages[stage]) fail(`未知阶段: ${stage}`);
   const payload = body.payload == null ? {} : object(body.payload, 'payload');
   assertSafeJSON(payload, 'payload');
-  return { stage, payload };
+  const lang = ['zh-CN', 'zh-TW', 'en', 'ja'].includes(body.lang) ? body.lang : 'zh-CN';
+  return { stage, payload, lang };
 }
 
 function validateStageResultShape(stage, result) {
@@ -203,6 +204,7 @@ export function validateImageGenerate(body) {
   if (body.kind !== undefined) string(body.kind, 'kind', { max: 80, optional: true });
   if (body.size !== undefined && !['1024x1024', '1024x1536', '1536x1024'].includes(body.size)) fail('图片尺寸无效');
   if (body.quality !== undefined && !['low', 'medium', 'high'].includes(body.quality)) fail('图片质量无效');
+  if (body.useRef !== undefined && typeof body.useRef !== 'boolean') fail('useRef 必须是布尔值');
   return body;
 }
 
@@ -229,6 +231,15 @@ export function validateSettingsPatch(body) {
   return body;
 }
 
+export function validateModelListRequest(body) {
+  object(body, '请求体');
+  assertSafeJSON(body);
+  if (!['text', 'image'].includes(body.kind)) fail('kind 必须是 text 或 image');
+  if (body.baseUrl !== undefined) string(body.baseUrl, 'baseUrl', { max: 2_000, optional: true });
+  if (body.apiKey !== undefined) string(body.apiKey, 'apiKey', { max: 4_096, optional: true });
+  return body;
+}
+
 export function validateBackup(backup) {
   object(backup, '备份');
   assertSafeJSON(backup, '备份');
@@ -251,6 +262,7 @@ export function validateBackup(backup) {
     string(image.kind, `backup.images[${i}].kind`, { max: 80 });
     string(image.dataUrl, `backup.images[${i}].dataUrl`, { max: 22 * 1024 * 1024 });
     if (image.isPrimary !== undefined && typeof image.isPrimary !== 'boolean') fail(`backup.images[${i}].isPrimary 必须是布尔值`);
+    if (image.archived !== undefined && typeof image.archived !== 'boolean') fail(`backup.images[${i}].archived 必须是布尔值`);
   });
   backup.works = works;
   backup.studio = studio;

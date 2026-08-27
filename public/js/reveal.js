@@ -1,5 +1,6 @@
 // 出道发布会 — 全屏暗场揭晓动画 + 彩带
 import { esc } from './ui.js';
+import { t } from './i18n.js';
 
 export function playReveal(concept) {
   return new Promise((resolve) => {
@@ -7,8 +8,8 @@ export function playReveal(concept) {
     stage.className = 'reveal-stage';
     stage.innerHTML = `
       <canvas id="rv-canvas"></canvas>
-      <button class="rv-skip">跳过 ›</button>
-      <div class="rv-label">DEBUT · 出道发布会</div>
+      <button class="rv-skip">${t('跳过')} ›</button>
+      <div class="rv-label">DEBUT · ${t('出道发布会')}</div>
       <div class="rv-members">${concept.members.map((m) => `
         <div class="rv-card" style="--mc:${esc(m.color)}">
           <div class="rv-orb">${esc(m.codename.slice(0, 1))}</div>
@@ -17,7 +18,7 @@ export function playReveal(concept) {
         </div>`).join('')}</div>
       <div class="rv-title">${esc(concept.name)}</div>
       <div class="rv-slogan">「${esc(concept.slogan)}」</div>
-      <div class="rv-enter"><button class="btn btn-primary btn-big">✦ 进入企划工作台</button></div>`;
+      <div class="rv-enter"><button class="btn btn-primary btn-big">✦ ${t('进入企划工作台')}</button></div>`;
     document.body.appendChild(stage);
 
     const cards = stage.querySelectorAll('.rv-card');

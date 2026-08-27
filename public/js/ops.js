@@ -4,19 +4,20 @@ import { $, $$, esc, toast, modal, confirmModal, copyText, segmented } from './u
 import { renderStudio } from './ops-studio.js';
 import { renderMemberStudioTab } from './member-studio.js';
 import { openSettings } from './settings-ui.js';
+import { t } from './i18n.js';
 
 export const TYPE_META = {
-  short_video: { label: '短视频', icon: '🎬', color: '#d23d72' },
-  daily: { label: '日常', icon: '📅', color: '#8a6d2f' },
-  live: { label: '直播', icon: '📺', color: '#0b7f8e' },
-  post: { label: '动态', icon: '✍️', color: '#6f5bb5' },
-  song: { label: '歌曲', icon: '🎵', color: '#6b48f0' },
-  poster: { label: '海报', icon: '🖼️', color: '#c06a14' },
-  other: { label: '其他', icon: '📄', color: '#514c5c' },
+  short_video: { label: t('短视频'), icon: '🎬', color: '#d23d72' },
+  daily: { label: t('日常'), icon: '📅', color: '#8a6d2f' },
+  live: { label: t('直播'), icon: '📺', color: '#0b7f8e' },
+  post: { label: t('动态'), icon: '✍️', color: '#6f5bb5' },
+  song: { label: t('歌曲'), icon: '🎵', color: '#6b48f0' },
+  poster: { label: t('海报'), icon: '🖼️', color: '#c06a14' },
+  other: { label: t('其他'), icon: '📄', color: '#514c5c' },
 };
 export const STATUS_META = {
-  idea: '💡 构思', making: '✍️ 制作中', scheduled: '⏰ 待发布',
-  published: '✅ 已发布', archived: '📦 归档',
+  idea: t('💡 构思'), making: t('✍️ 制作中'), scheduled: t('⏰ 待发布'),
+  published: t('✅ 已发布'), archived: t('📦 归档'),
 };
 
 const O = { group: null, works: [], tab: 'calendar', month: null, topics: {} };
@@ -38,7 +39,7 @@ const VALID_TABS = ['overview', 'calendar', 'daily', 'video', 'studio', 'works']
 
 export async function renderOps(app, groupId, initialTab, isCurrent = () => true) {
   if (O.group?.id !== groupId) { O.topics = {}; O.generating = {}; O.hints = {}; }
-  app.innerHTML = `<div class="empty-state"><div class="big">⏳</div>加载运营中心…</div>`;
+  app.innerHTML = `<div class="empty-state"><div class="big">⏳</div>${t('加载运营中心…')}</div>`;
   try {
     const [group, works, topics] = await Promise.all([
       api.groups.get(groupId), api.works.list(groupId), api.studio.get(groupId),
@@ -47,7 +48,7 @@ export async function renderOps(app, groupId, initialTab, isCurrent = () => true
     [O.group, O.works, O.topics] = [group, works, topics];
   } catch (e) {
     if (!isCurrent()) return;
-    app.innerHTML = `<div class="empty-state">加载失败：${esc(e.message)}</div>`;
+    app.innerHTML = `<div class="empty-state">${t('加载失败：')}${esc(e.message)}</div>`;
     return;
   }
   O.tab = VALID_TABS.includes(initialTab) ? initialTab : 'overview';
@@ -55,19 +56,19 @@ export async function renderOps(app, groupId, initialTab, isCurrent = () => true
   const c = O.group.data.concept;
   // 导航按流水线分组：指挥台 → 创作 → 归档（带步骤编号，左栏即动线）
   const NAV_GROUPS = [
-    ['01', '指挥台', [['overview', '总览'], ['calendar', '发布日历']]],
-    ['02', '创作', [['daily', '日常内容'], ['video', '短视频'], ['studio', '形象生成']]],
-    ['03', '归档', [['works', '作品库']]],
+    ['01', t('指挥台'), [['overview', t('总览')], ['calendar', t('发布日历')]]],
+    ['02', t('创作'), [['daily', t('日常内容')], ['video', t('短视频')], ['studio', t('形象生成')]]],
+    ['03', t('归档'), [['works', t('作品库')]]],
   ];
   document.body.classList.add('ws-mode');
   app.style.setProperty('--team-c', c.mainColor);
   app.innerHTML = `
     <div class="ws-shell" style="--team-c:${esc(c.mainColor)}">
       <aside class="ws-side">
-        <button class="side-app" id="ops-home"><img class="brand-logo" src="/logo-mark.png" alt="成团"></button>
+        <button class="side-app" id="ops-home"><img class="brand-logo" src="/logo-mark.png" alt="${t('成团')}"></button>
         <div class="side-team">
           <div class="side-name"><span class="ws-dot"></span>${esc(c.name)}</div>
-          <div class="side-meta">运营中心 · OPERATIONS</div>
+          <div class="side-meta">${t('运营中心 · OPERATIONS')}</div>
         </div>
         <nav class="side-nav side-nav-flow" id="ops-nav">
           ${NAV_GROUPS.map(([no, sec, items]) => `<div class="side-sec"><span class="side-step">${no}</span>${sec}</div>
@@ -75,8 +76,8 @@ export async function renderOps(app, groupId, initialTab, isCurrent = () => true
         </nav>
         <div id="ops-alerts" class="side-alerts"></div>
         <div class="side-foot">
-          <button class="btn side-btn" id="ops-settings">⚙️ 模型设置</button>
-          <a class="btn side-btn" href="#/group/${esc(O.group.id)}">← 返回企划工作台</a>
+          <button class="btn side-btn" id="ops-settings">${t('⚙️ 模型设置')}</button>
+          <a class="btn side-btn" href="#/group/${esc(O.group.id)}">${t('← 返回企划工作台')}</a>
         </div>
       </aside>
       <main class="ws-body"><div id="ops-content"></div></main>
@@ -103,8 +104,8 @@ function updateAlerts() {
   const today = fmtDate(new Date());
   const dueToday = O.works.filter((w) => w.publishAt === today && w.status === 'scheduled').length;
   const overdue = O.works.filter((w) => w.publishAt && w.publishAt < today && w.status === 'scheduled').length;
-  el.innerHTML = `${dueToday ? `<span class="badge" style="background:var(--ink);color:#fff">📤 今天待发 ${dueToday} 条</span>` : ''}
-    ${overdue ? `<span class="badge" style="background:var(--err);color:#fff">⚠️ 逾期未发 ${overdue} 条</span>` : ''}`;
+  el.innerHTML = `${dueToday ? `<span class="badge" style="background:var(--ink);color:#fff">${t('📤 今天待发 {n} 条', { n: dueToday })}</span>` : ''}
+    ${overdue ? `<span class="badge" style="background:var(--err);color:#fff">${t('⚠️ 逾期未发 {n} 条', { n: overdue })}</span>` : ''}`;
 }
 
 function renderOpsTab() {
@@ -138,7 +139,7 @@ function opsHead(en, title, sub, actions = '') {
 }
 
 // ── 运营总览（驾驶舱） ──
-const CYCLE = [['日常期', '养粉'], ['预热期', '埋钩子'], ['主打期', '火力全开'], ['长尾期', '二创切片']];
+const CYCLE = [['日常期', t('养粉')], ['预热期', t('埋钩子')], ['主打期', t('火力全开')], ['长尾期', t('二创切片')]];
 
 function startOfWeek(d) {
   const x = new Date(d);
@@ -187,25 +188,25 @@ function renderOverview(el) {
   O.works.filter((w) => w.status === 'scheduled' && w.publishAt && w.publishAt >= today && w.publishAt <= weStr)
     .sort((a, b) => a.publishAt.localeCompare(b.publishAt))
     .forEach((w) => {
-      if (!(w.content?.script || w.content?.copy)) todos.push({ t: `「${w.title}」还没生成内容包`, sub: `${w.publishAt.slice(5)} 待发`, tab: 'works' });
+      if (!(w.content?.script || w.content?.copy)) todos.push({ t: t('「{title}」还没生成内容包', { title: w.title }), sub: t('{date} 待发', { date: w.publishAt.slice(5) }), tab: 'works' });
     });
-  if (overdue.length) todos.push({ t: `${overdue.length} 条内容逾期未发`, sub: '去发布日历处理', tab: 'calendar', warn: true });
+  if (overdue.length) todos.push({ t: t('{n} 条内容逾期未发', { n: overdue.length }), sub: t('去发布日历处理'), tab: 'calendar', warn: true });
   const lastDated = O.works.filter((w) => w.publishAt).map((w) => w.publishAt).sort().pop();
   if (lastDated && lastDated < today) {
     const gap = Math.round((new Date(today) - new Date(lastDated)) / 864e5);
-    if (gap >= 3) todos.push({ t: `已 ${gap} 天没有新内容排期`, sub: '去日常选题工坊补弹药', tab: 'daily', warn: true });
+    if (gap >= 3) todos.push({ t: t('已 {n} 天没有新内容排期', { n: gap }), sub: t('去日常选题工坊补弹药'), tab: 'daily', warn: true });
   }
-  if (!total) todos.push({ t: '作品库还是空的', sub: '从日常选题工坊开始产出第一条', tab: 'daily' });
+  if (!total) todos.push({ t: t('作品库还是空的'), sub: t('从日常选题工坊开始产出第一条'), tab: 'daily' });
 
   // 即将到来
   const upcoming = [];
   d.members.forEach((m) => {
     const md = parseMonthDay(m.profile?.birthday);
-    if (md) { const n = daysUntil(md.month, md.day); if (n <= 45) upcoming.push({ icon: '🎂', label: `${m.codename} 生日`, date: `${md.month}/${md.day}`, days: n }); }
+    if (md) { const n = daysUntil(md.month, md.day); if (n <= 45) upcoming.push({ icon: '🎂', label: t('{name} 生日', { name: m.codename }), date: `${md.month}/${md.day}`, days: n }); }
   });
   const cd = new Date(g.createdAt);
   const annN = daysUntil(cd.getMonth() + 1, cd.getDate());
-  if (annN <= 45) upcoming.push({ icon: '🎉', label: '出道纪念日', date: `${cd.getMonth() + 1}/${cd.getDate()}`, days: annN });
+  if (annN <= 45) upcoming.push({ icon: '🎉', label: t('出道纪念日'), date: `${cd.getMonth() + 1}/${cd.getDate()}`, days: annN });
   upcoming.sort((a, b) => a.days - b.days);
 
   const legacyCycleKey = `ops-cycle-${g.id}`;
@@ -217,24 +218,24 @@ function renderOverview(el) {
       .then((group) => { if (O.group === g) O.group = group; localStorage.removeItem(legacyCycleKey); })
       .catch(() => { delete d.opsCycle; });
   }
-  const cycleSel = `<label class="cycle-sel">当前周期
-    <select id="ov-cycle">${CYCLE.map(([k, hint]) => `<option value="${k}" ${k === cycle ? 'selected' : ''}>${k} · ${hint}</option>`).join('')}</select></label>`;
+  const cycleSel = `<label class="cycle-sel">${t('当前周期')}
+    <select id="ov-cycle">${CYCLE.map(([k, hint]) => `<option value="${k}" ${k === cycle ? 'selected' : ''}>${t(k)} · ${hint}</option>`).join('')}</select></label>`;
 
   el.innerHTML = `<div class="ops-page">
-    ${opsHead('OPERATIONS · 运营总览', c.name, `出道第 <b>${debutDays}</b> 天　·　${esc(c.vibe || c.theme || '')}`, cycleSel)}
+    ${opsHead(t('OPERATIONS · 运营总览'), c.name, `${t('出道第 <b>{n}</b> 天', { n: debutDays })}　·　${esc(c.vibe || c.theme || '')}`, cycleSel)}
 
     <div class="dash-stats">
-      <div class="stat-tile"><div class="stat-num">${total}</div><div class="stat-lbl">作品总数</div></div>
-      <div class="stat-tile" data-go="calendar"><div class="stat-num">${weekPending}</div><div class="stat-lbl">本周待发</div></div>
-      <div class="stat-tile ${overdue.length ? 'warn' : ''}" data-go="calendar"><div class="stat-num">${overdue.length}${overdue.length ? ' ⚠' : ''}</div><div class="stat-lbl">逾期未发</div></div>
-      <div class="stat-tile"><div class="stat-num">${published}</div><div class="stat-lbl">已发布</div></div>
+      <div class="stat-tile"><div class="stat-num">${total}</div><div class="stat-lbl">${t('作品总数')}</div></div>
+      <div class="stat-tile" data-go="calendar"><div class="stat-num">${weekPending}</div><div class="stat-lbl">${t('本周待发')}</div></div>
+      <div class="stat-tile ${overdue.length ? 'warn' : ''}" data-go="calendar"><div class="stat-num">${overdue.length}${overdue.length ? ' ⚠' : ''}</div><div class="stat-lbl">${t('逾期未发')}</div></div>
+      <div class="stat-tile"><div class="stat-num">${published}</div><div class="stat-lbl">${t('已发布')}</div></div>
     </div>
 
     <section class="dash-card dash-pulse">
-      <div class="dash-card-head"><h3>本周脉搏</h3><span class="muted">${wsStr.slice(5)} – ${weStr.slice(5)}</span><div class="spacer"></div><button class="btn btn-ghost btn-sm" data-go="calendar">打开日历 →</button></div>
+      <div class="dash-card-head"><h3>${t('本周脉搏')}</h3><span class="muted">${wsStr.slice(5)} – ${weStr.slice(5)}</span><div class="spacer"></div><button class="btn btn-ghost btn-sm" data-go="calendar">${t('打开日历 →')}</button></div>
       <div class="pulse-row">
         ${wkDays.map((wd) => `<button class="pulse-day ${wd.isToday ? 'today' : ''} ${wd.items.length ? 'has' : ''}" data-go="calendar" title="${wd.ds}">
-          <span class="pulse-wk">周${wd.lbl}</span>
+          <span class="pulse-wk">${t('周' + wd.lbl)}</span>
           <span class="pulse-date">${wd.dayNum}</span>
           <span class="pulse-chips">${wd.items.slice(0, 3).map((w) => (TYPE_META[w.type] || TYPE_META.other).icon).join('') || '·'}</span>
         </button>`).join('')}
@@ -243,15 +244,15 @@ function renderOverview(el) {
 
     <div class="dash-cols">
       <section class="dash-card">
-        <div class="dash-card-head"><h3>待办 / 提醒</h3><span class="badge">${todos.length}</span></div>
+        <div class="dash-card-head"><h3>${t('待办 / 提醒')}</h3><span class="badge">${todos.length}</span></div>
         ${todos.length ? `<ul class="dash-list">${todos.map((x) => `<li class="dash-li ${x.warn ? 'warn' : ''}" data-go="${x.tab}"><span class="dash-li-dot"></span><div><b>${esc(x.t)}</b><small>${esc(x.sub)}</small></div><span class="dash-li-go">→</span></li>`).join('')}</ul>`
-          : `<p class="dash-empty">✅ 一切就绪，没有待办</p>`}
-        <button class="btn btn-primary btn-sm dash-cta" data-plan>🤖 让 AI 排一周</button>
+          : `<p class="dash-empty">${t('✅ 一切就绪，没有待办')}</p>`}
+        <button class="btn btn-primary btn-sm dash-cta" data-plan>${t('🤖 让 AI 排一周')}</button>
       </section>
       <section class="dash-card">
-        <div class="dash-card-head"><h3>即将到来</h3></div>
-        ${upcoming.length ? `<ul class="dash-list">${upcoming.map((u) => `<li class="dash-li"><span class="dash-li-ico">${u.icon}</span><div><b>${esc(u.label)}</b><small>${u.date}</small></div><span class="dash-days">${u.days === 0 ? '今天' : `${u.days} 天后`}</span></li>`).join('')}</ul>`
-          : `<p class="dash-empty">近 45 天没有关键日期<br><small class="muted">在成员设定补生日字段后会自动出现</small></p>`}
+        <div class="dash-card-head"><h3>${t('即将到来')}</h3></div>
+        ${upcoming.length ? `<ul class="dash-list">${upcoming.map((u) => `<li class="dash-li"><span class="dash-li-ico">${u.icon}</span><div><b>${esc(u.label)}</b><small>${u.date}</small></div><span class="dash-days">${u.days === 0 ? t('今天') : t('{n} 天后', { n: u.days })}</span></li>`).join('')}</ul>`
+          : `<p class="dash-empty">${t('近 45 天没有关键日期')}<br><small class="muted">${t('在成员设定补生日字段后会自动出现')}</small></p>`}
       </section>
     </div>
   </div>`;
@@ -267,7 +268,7 @@ function renderOverview(el) {
       if (previous === undefined) delete d.opsCycle;
       else d.opsCycle = previous;
       e.target.value = previous || '日常期';
-      toast('周期保存失败：' + err.message, 3000);
+      toast(t('周期保存失败：') + err.message, 3000);
     }
   };
   el.querySelectorAll('[data-go]').forEach((b) => b.onclick = () => gotoTab(b.dataset.go));
@@ -295,27 +296,27 @@ function renderCalendar(el) {
     const items = (byDate[ds] || []).map((w) => {
       const tm = TYPE_META[w.type] || TYPE_META.other;
       const overdue = ds < todayStr && w.status === 'scheduled';
-      return `<div class="cal-chip ${overdue ? 'overdue' : ''} ${w.status === 'published' ? 'pub' : ''}" data-work="${esc(w.id)}" style="--wc:${tm.color}" title="${esc(w.title)}${overdue ? '（逾期未发）' : ''}">
+      return `<div class="cal-chip ${overdue ? 'overdue' : ''} ${w.status === 'published' ? 'pub' : ''}" data-work="${esc(w.id)}" style="--wc:${tm.color}" title="${esc(w.title)}${overdue ? t('（逾期未发）') : ''}">
         ${overdue ? '⚠️' : tm.icon} ${esc(w.title)}</div>`;
     }).join('');
     cells.push(`<div class="cal-cell ${ds === todayStr ? 'today' : ''}" data-date="${ds}">
-      <div class="cal-day-row"><span class="cal-day-num">${d}</span><button class="cal-add" data-add="${ds}" title="在这天新建">＋</button></div>
+      <div class="cal-day-row"><span class="cal-day-num">${d}</span><button class="cal-add" data-add="${ds}" title="${t('在这天新建')}">＋</button></div>
       ${items}</div>`);
   }
 
   el.innerHTML = `<div class="ops-page">
-    ${opsHead('CALENDAR · 排播指挥台', '发布日历', '每天发什么的总开关——从这里排播、补内容、追逾期。',
-      `<button class="btn btn-ghost" id="cal-plan">🤖 AI 排期</button><button class="btn btn-primary" id="cal-new">＋ 新建作品</button>`)}
+    ${opsHead(t('CALENDAR · 排播指挥台'), t('发布日历'), t('每天发什么的总开关——从这里排播、补内容、追逾期。'),
+      `<button class="btn btn-ghost" id="cal-plan">${t('🤖 AI 排期')}</button><button class="btn btn-primary" id="cal-new">${t('＋ 新建作品')}</button>`)}
     <div class="card cal-card">
       <div class="cal-toolbar">
         <button class="btn btn-ghost btn-sm" id="cal-prev">‹</button>
-        <h2 class="cal-month">${y} 年 ${m + 1} 月</h2>
+        <h2 class="cal-month">${t('{y} 年 {m} 月', { y, m: m + 1 })}</h2>
         <button class="btn btn-ghost btn-sm" id="cal-next">›</button>
-        <button class="btn btn-ghost btn-sm" id="cal-today">回到今天</button>
+        <button class="btn btn-ghost btn-sm" id="cal-today">${t('回到今天')}</button>
         <div style="flex:1"></div>
         <span class="cal-legend">${Object.values(TYPE_META).map((t) => `<span>${t.icon}${t.label}</span>`).join('')}</span>
       </div>
-      <div class="cal-week">${['一', '二', '三', '四', '五', '六', '日'].map((w) => `<div>周${w}</div>`).join('')}</div>
+      <div class="cal-week">${['一', '二', '三', '四', '五', '六', '日'].map((w) => `<div>${t('周' + w)}</div>`).join('')}</div>
       <div class="cal-grid">${cells.join('')}</div>
     </div>
   </div>`;
@@ -336,16 +337,16 @@ function renderWorksLib(el) {
   const fType = el.dataset.ftype || '';
   const fStatus = el.dataset.fstatus || '';
   const total = O.works.length;
-  const statusPills = [['', `全部 ${total}`], ...Object.entries(STATUS_META).map(([k, label]) => {
+  const statusPills = [['', `${t('全部')} ${total}`], ...Object.entries(STATUS_META).map(([k, label]) => {
     const n = O.works.filter((w) => w.status === k).length;
     return [k, `${label} ${n}`];
   })];
 
   el.innerHTML = `<div class="ops-page">
-    ${opsHead('WORKS · LIBRARY', '作品库', '团队产出的全部内容档案，按发布时间归档；选题与创作的成品都沉淀在这里。',
-      `<input id="wf-q" class="vs-input lib-search" type="search" placeholder="🔍 搜标题 / 成员" value="${esc(el.dataset.q || '')}">
-       <select id="wf-type" class="vs-select">${['<option value="">全部类型</option>', ...Object.entries(TYPE_META).map(([k, t]) => `<option value="${k}" ${k === fType ? 'selected' : ''}>${t.icon} ${t.label}</option>`)].join('')}</select>
-       <button class="btn btn-primary" id="wk-new">＋ 新建作品</button>`)}
+    ${opsHead('WORKS · LIBRARY', t('作品库'), t('团队产出的全部内容档案，按发布时间归档；选题与创作的成品都沉淀在这里。'),
+      `<input id="wf-q" class="vs-input lib-search" type="search" placeholder="${t('🔍 搜标题 / 成员')}" value="${esc(el.dataset.q || '')}">
+       <select id="wf-type" class="vs-select">${[`<option value="">${t('全部类型')}</option>`, ...Object.entries(TYPE_META).map(([k, tm]) => `<option value="${k}" ${k === fType ? 'selected' : ''}>${tm.icon} ${tm.label}</option>`)].join('')}</select>
+       <button class="btn btn-primary" id="wk-new">${t('＋ 新建作品')}</button>`)}
     <div class="lib-filters">${statusPills.map(([k, label]) => `<button class="lib-pill${k === fStatus ? ' on' : ''}" data-status="${k}">${label}</button>`).join('')}</div>
     <div id="lib-results"></div>
   </div>`;
@@ -369,7 +370,7 @@ function renderLibResults(el) {
   const box = $('#lib-results');
   box.innerHTML = works.length
     ? `<div class="works-lib">${works.map(workCard).join('')}</div>`
-    : `<div class="empty-state" style="padding:60px 0"><div class="big">📦</div>${O.works.length ? '没有符合筛选条件的作品' : '作品库还是空的——去日常选题或创作间产出第一条内容吧'}</div>`;
+    : `<div class="empty-state" style="padding:60px 0"><div class="big">📦</div>${O.works.length ? t('没有符合筛选条件的作品') : t('作品库还是空的——去日常选题或创作间产出第一条内容吧')}</div>`;
   box.querySelectorAll('.work-card').forEach((card) => {
     card.onclick = () => openWork(O.works.find((w) => w.id === card.dataset.work));
   });
@@ -384,11 +385,11 @@ function workCard(w) {
       <span class="work-type"><span class="work-dot"></span>${tm.icon} ${tm.label}</span>
       <span class="work-status work-status-${esc(w.status)}">${esc(STATUS_META[w.status] || w.status)}</span>
     </div>
-    <b class="work-card-title">${esc(w.title) || '未命名作品'}</b>
+    <b class="work-card-title">${esc(w.title) || t('未命名作品')}</b>
     <div class="work-card-meta">
       ${w.members ? `<span>👥 ${esc(w.members)}</span>` : ''}
-      <span class="${overdue ? 'work-overdue' : ''}">${overdue ? '⚠️ ' : '🗓 '}${esc(w.publishAt || '未排期')}</span>
-      ${hasContent ? '<span class="work-haspack">📋 内容包</span>' : ''}
+      <span class="${overdue ? 'work-overdue' : ''}">${overdue ? '⚠️ ' : '🗓 '}${w.publishAt ? esc(w.publishAt) : t('未排期')}</span>
+      ${hasContent ? `<span class="work-haspack">${t('📋 内容包')}</span>` : ''}
     </div>
   </article>`;
 }
@@ -401,28 +402,28 @@ export function openWork(work, presetDate = '', presetStatus = '') {
   const w = work || { type: 'short_video', title: '', members: '', channel: '', status: presetStatus || (presetDate ? 'scheduled' : 'idea'), publishAt: presetDate, content: {} };
   const memberNames = group.data.members.map((m) => m.codename);
 
-  modal(`<h3>${isNew ? '＋ 新建作品' : '作品详情'}</h3>
-    <label class="field"><span class="field-label">标题</span><input id="wk-title" type="text" value="${esc(w.title)}" placeholder="作品标题"></label>
+  modal(`<h3>${isNew ? t('＋ 新建作品') : t('作品详情')}</h3>
+    <label class="field"><span class="field-label">${t('标题')}</span><input id="wk-title" type="text" value="${esc(w.title)}" placeholder="${t('作品标题')}"></label>
     <div class="field-row">
-      <label class="field"><span class="field-label">类型</span>
-        <select id="wk-type">${Object.entries(TYPE_META).map(([k, t]) => `<option value="${k}" ${k === w.type ? 'selected' : ''}>${t.icon} ${t.label}</option>`).join('')}</select></label>
-      <label class="field"><span class="field-label">发布日期</span><input id="wk-date" type="date" value="${esc(w.publishAt || '')}"></label>
+      <label class="field"><span class="field-label">${t('类型')}</span>
+        <select id="wk-type">${Object.entries(TYPE_META).map(([k, tm]) => `<option value="${k}" ${k === w.type ? 'selected' : ''}>${tm.icon} ${tm.label}</option>`).join('')}</select></label>
+      <label class="field"><span class="field-label">${t('发布日期')}</span><input id="wk-date" type="date" value="${esc(w.publishAt || '')}"></label>
     </div>
-    <label class="field"><span class="field-label">状态</span>
+    <label class="field"><span class="field-label">${t('状态')}</span>
       ${segmented('wk-status', Object.entries(STATUS_META).map(([k, s]) => ({ value: k, label: s })), w.status)}</label>
     <div class="field-row">
-      <label class="field"><span class="field-label">出演成员 <small>（逗号分隔，或"全员"）</small></span><input id="wk-members" type="text" value="${esc(w.members)}" placeholder="${esc(memberNames.join('、'))}"></label>
-      <label class="field"><span class="field-label">发布账号 <small>（可留空）</small></span><input id="wk-channel" type="text" value="${esc(w.channel)}" placeholder="团号 / 某成员个人号"></label>
+      <label class="field"><span class="field-label">${t('出演成员')} <small>${t('（逗号分隔，或"全员"）')}</small></span><input id="wk-members" type="text" value="${esc(w.members)}" placeholder="${esc(memberNames.join('、'))}"></label>
+      <label class="field"><span class="field-label">${t('发布账号')} <small>${t('（可留空）')}</small></span><input id="wk-channel" type="text" value="${esc(w.channel)}" placeholder="${t('团号 / 某成员个人号')}"></label>
     </div>
     <div id="wk-content">${contentHTML(w)}</div>
     <div class="m-foot" style="justify-content:space-between">
-      <div>${isNew ? '' : '<button class="btn btn-danger btn-sm" data-del>删除</button>'}</div>
+      <div>${isNew ? '' : `<button class="btn btn-danger btn-sm" data-del>${t('删除')}</button>`}</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         ${aiButtonsHTML(w)}
-        ${(w.content?.script || w.content?.copy) ? '<button class="btn btn-ghost" data-copyall>📋 复制内容包</button>' : ''}
-        ${!isNew && w.status === 'scheduled' ? '<button class="btn btn-ghost" data-pub style="color:var(--ok);border-color:#bcd9c8">✅ 标记已发布</button>' : ''}
-        <button class="btn btn-ghost" data-x>关闭</button>
-        <button class="btn btn-primary" data-ok>${isNew ? '创建' : '保存'}</button>
+        ${(w.content?.script || w.content?.copy) ? `<button class="btn btn-ghost" data-copyall>${t('📋 复制内容包')}</button>` : ''}
+        ${!isNew && w.status === 'scheduled' ? `<button class="btn btn-ghost" data-pub style="color:var(--ok);border-color:#bcd9c8">${t('✅ 标记已发布')}</button>` : ''}
+        <button class="btn btn-ghost" data-x>${t('关闭')}</button>
+        <button class="btn btn-primary" data-ok>${isNew ? t('创建') : t('保存')}</button>
       </div>
     </div>`,
     { onMount: (mask, close) => {
@@ -442,7 +443,7 @@ export function openWork(work, presetDate = '', presetStatus = '') {
         else await api.works.update(w.id, fields);
         if (O.group?.id === groupId) await reloadWorks();
         close();
-        toast(isNew ? '已创建' : '已保存');
+        toast(isNew ? t('已创建') : t('已保存'));
         if (O.group?.id === groupId) renderOpsTab();
       };
       const pubBtn = mask.querySelector('[data-pub]');
@@ -450,16 +451,16 @@ export function openWork(work, presetDate = '', presetStatus = '') {
         await api.works.update(w.id, { ...readForm(), status: 'published' });
         if (O.group?.id === groupId) await reloadWorks();
         close();
-        toast('已标记为已发布 🎉');
+        toast(t('已标记为已发布 🎉'));
         if (O.group?.id === groupId) renderOpsTab();
       };
       const delBtn = mask.querySelector('[data-del]');
       if (delBtn) delBtn.onclick = async () => {
-        if (await confirmModal('删除作品', `确定删除「${w.title}」吗？`)) {
+        if (await confirmModal(t('删除作品'), t('确定删除「{title}」吗？', { title: w.title }))) {
           await api.works.remove(w.id);
           if (O.group?.id === groupId) await reloadWorks();
           close();
-          toast('已删除');
+          toast(t('已删除'));
           if (O.group?.id === groupId) renderOpsTab();
         }
       };
@@ -469,13 +470,13 @@ export function openWork(work, presetDate = '', presetStatus = '') {
       const copyAllBtn = mask.querySelector('[data-copyall]');
       if (copyAllBtn) copyAllBtn.onclick = () => {
         const parts = [`【${w.title}】`];
-        if (w.members) parts.push(`出演：${w.members}`);
-        if (w.publishAt) parts.push(`发布日期：${w.publishAt}`);
-        if (w.content.copy) parts.push(`\n文案：\n${w.content.copy}`);
+        if (w.members) parts.push(`${t('出演：')}${w.members}`);
+        if (w.publishAt) parts.push(`${t('发布日期：')}${w.publishAt}`);
+        if (w.content.copy) parts.push(`\n${t('文案：')}\n${w.content.copy}`);
         if (w.content.script) {
           const s = w.content.script;
-          const shots = (s.shots || []).map((sh) => `${sh.no}. [${sh.scene}] ${sh.action}${sh.line ? '\n   台词：' + sh.line : ''}${sh.caption ? '\n   字幕：' + sh.caption : ''}`).join('\n');
-          parts.push(`\n分镜脚本（${s.duration || ''}）：\n${shots}${s.endHook ? '\n结尾钩子：' + s.endHook : ''}${s.bgm ? '\nBGM建议：' + s.bgm : ''}${s.tips ? '\n拍摄提示：' + s.tips : ''}`);
+          const shots = (s.shots || []).map((sh) => `${sh.no}. [${sh.scene}] ${sh.action}${sh.line ? '\n   ' + t('台词：') + sh.line : ''}${sh.caption ? '\n   ' + t('字幕：') + sh.caption : ''}`).join('\n');
+          parts.push(`\n${t('分镜脚本（{duration}）：', { duration: s.duration || '' })}\n${shots}${s.endHook ? '\n' + t('结尾钩子：') + s.endHook : ''}${s.bgm ? '\n' + t('BGM建议：') + s.bgm : ''}${s.tips ? '\n' + t('拍摄提示：') + s.tips : ''}`);
         }
         copyText(parts.join('\n'));
       };
@@ -483,7 +484,7 @@ export function openWork(work, presetDate = '', presetStatus = '') {
       const genScript = mask.querySelector('[data-gen-script]');
       if (genScript) genScript.onclick = async () => {
         genScript.disabled = true;
-        genScript.innerHTML = '<span class="spinner"></span> 生成中…';
+        genScript.innerHTML = `<span class="spinner"></span> ${t('生成中…')}`;
         try {
           const d = group.data;
           const names = ($('#wk-members', mask).value || '').split(/[,，、]/).map((s) => s.trim()).filter(Boolean);
@@ -492,16 +493,16 @@ export function openWork(work, presetDate = '', presetStatus = '') {
           w.content.script = await api.stage('videoScript', { concept: d.concept, castMembers: cast.length ? cast : d.members, topic, duration: '30秒' });
           $('#wk-content', mask).innerHTML = contentHTML(w);
           mask.querySelectorAll('.copy-btn').forEach((b) => b.onclick = () => copyText(b.dataset.text));
-          toast('脚本已生成，记得点"保存"');
-        } catch (e) { toast('生成失败：' + e.message, 3000); }
+          toast(t('脚本已生成，记得点"保存"'));
+        } catch (e) { toast(t('生成失败：') + e.message, 3000); }
         genScript.disabled = false;
-        genScript.textContent = '🎬 重新生成脚本';
+        genScript.textContent = t('🎬 重新生成脚本');
       };
       // AI：生成成员语气文案
       const genCopy = mask.querySelector('[data-gen-copy]');
       if (genCopy) genCopy.onclick = async () => {
         genCopy.disabled = true;
-        genCopy.innerHTML = '<span class="spinner"></span> 生成中…';
+        genCopy.innerHTML = `<span class="spinner"></span> ${t('生成中…')}`;
         try {
           const d = group.data;
           const names = ($('#wk-members', mask).value || '').split(/[,，、]/).map((s) => s.trim()).filter(Boolean);
@@ -514,33 +515,33 @@ export function openWork(work, presetDate = '', presetStatus = '') {
           w.content.copy = r.copy;
           $('#wk-content', mask).innerHTML = contentHTML(w);
           mask.querySelectorAll('.copy-btn').forEach((b) => b.onclick = () => copyText(b.dataset.text));
-          toast('文案已生成，记得点"保存"');
-        } catch (e) { toast('生成失败：' + e.message, 3000); }
+          toast(t('文案已生成，记得点"保存"'));
+        } catch (e) { toast(t('生成失败：') + e.message, 3000); }
         genCopy.disabled = false;
-        genCopy.textContent = '✍️ 重新生成文案';
+        genCopy.textContent = t('✍️ 重新生成文案');
       };
     } });
 }
 
 function aiButtonsHTML(w) {
   const btns = [];
-  if (w.type === 'short_video') btns.push(`<button class="btn btn-ghost" data-gen-script>${w.content.script ? '🎬 重新生成脚本' : '🎬 生成分镜脚本'}</button>`);
-  if (w.type === 'daily' || w.type === 'post') btns.push(`<button class="btn btn-ghost" data-gen-copy>${w.content.copy ? '✍️ 重新生成文案' : '✍️ 生成成员语气文案'}</button>`);
+  if (w.type === 'short_video') btns.push(`<button class="btn btn-ghost" data-gen-script>${w.content.script ? t('🎬 重新生成脚本') : t('🎬 生成分镜脚本')}</button>`);
+  if (w.type === 'daily' || w.type === 'post') btns.push(`<button class="btn btn-ghost" data-gen-copy>${w.content.copy ? t('✍️ 重新生成文案') : t('✍️ 生成成员语气文案')}</button>`);
   return btns.join('');
 }
 
 function contentHTML(w) {
   const c = w.content || {};
   const parts = [];
-  if (c.topic?.hook || c.hook) parts.push(`<p style="margin:4px 0"><b>钩子：</b>${esc(c.topic?.hook || c.hook)}</p>`);
-  if (c.topic?.desc) parts.push(`<p style="margin:4px 0"><b>内容：</b>${esc(c.topic.desc)}</p>`);
-  if (c.topic?.outline) parts.push(`<p style="margin:4px 0"><b>大纲：</b>${esc(c.topic.outline)}</p>`);
-  if (c.copy) parts.push(`<p style="margin:8px 0 2px"><b>发布文案</b></p><div class="prompt-block">${esc(c.copy)}<button class="copy-btn" data-text="${esc(c.copy)}">复制</button></div>`);
+  if (c.topic?.hook || c.hook) parts.push(`<p style="margin:4px 0"><b>${t('钩子：')}</b>${esc(c.topic?.hook || c.hook)}</p>`);
+  if (c.topic?.desc) parts.push(`<p style="margin:4px 0"><b>${t('内容：')}</b>${esc(c.topic.desc)}</p>`);
+  if (c.topic?.outline) parts.push(`<p style="margin:4px 0"><b>${t('大纲：')}</b>${esc(c.topic.outline)}</p>`);
+  if (c.copy) parts.push(`<p style="margin:8px 0 2px"><b>${t('发布文案')}</b></p><div class="prompt-block">${esc(c.copy)}<button class="copy-btn" data-text="${esc(c.copy)}">${t('复制')}</button></div>`);
   if (c.script) {
     const s = c.script;
-    const scriptText = (s.shots || []).map((sh) => `${sh.no}. [${sh.scene}] ${sh.action}${sh.line ? '\n   台词：' + sh.line : ''}${sh.caption ? '\n   字幕：' + sh.caption : ''}`).join('\n');
-    parts.push(`<p style="margin:8px 0 2px"><b>分镜脚本</b> · ${esc(s.duration || '')}　<span class="muted">BGM：${esc(s.bgm || '')}</span></p>
-      <div class="prompt-block">${esc(scriptText)}\n\n结尾钩子：${esc(s.endHook || '')}\n拍摄提示：${esc(s.tips || '')}<button class="copy-btn" data-text="${esc(scriptText + '\n\n结尾钩子：' + (s.endHook || '') + '\n拍摄提示：' + (s.tips || ''))}">复制</button></div>`);
+    const scriptText = (s.shots || []).map((sh) => `${sh.no}. [${sh.scene}] ${sh.action}${sh.line ? '\n   ' + t('台词：') + sh.line : ''}${sh.caption ? '\n   ' + t('字幕：') + sh.caption : ''}`).join('\n');
+    parts.push(`<p style="margin:8px 0 2px"><b>${t('分镜脚本')}</b> · ${esc(s.duration || '')}　<span class="muted">${t('BGM：')}${esc(s.bgm || '')}</span></p>
+      <div class="prompt-block">${esc(scriptText)}\n\n${t('结尾钩子：')}${esc(s.endHook || '')}\n${t('拍摄提示：')}${esc(s.tips || '')}<button class="copy-btn" data-text="${esc(scriptText + '\n\n' + t('结尾钩子：') + (s.endHook || '') + '\n' + t('拍摄提示：') + (s.tips || ''))}">${t('复制')}</button></div>`);
   }
   return parts.length ? `<div style="background:#faf9f4;border-radius:10px;padding:12px 16px;margin-bottom:6px">${parts.join('')}</div>` : '';
 }
@@ -552,19 +553,19 @@ function openPlanModal() {
   const works = O.works;
   const today = fmtDate(new Date());
   let closePlan;
-  modal(`<h3>🤖 AI 智能排期</h3>
-    <p class="sub" style="margin-bottom:16px">按团队人设和关系生成 7 天发布计划，逐条确认后写入日历。已排定的内容会自动避开。</p>
+  modal(`<h3>${t('🤖 AI 智能排期')}</h3>
+    <p class="sub" style="margin-bottom:16px">${t('按团队人设和关系生成 7 天发布计划，逐条确认后写入日历。已排定的内容会自动避开。')}</p>
     <div class="field-row">
-      <label class="field" style="max-width:200px"><span class="field-label">起始日期</span><input id="pl-start" type="date" value="${today}"></label>
-      <label class="field"><span class="field-label">要求 <small>（可留空）</small></span><input id="pl-hint" type="text" placeholder="例如：这周主推小叮 / 周末要有直播 / 轻松一点"></label>
-      <button class="btn btn-primary" id="pl-gen">🤖 生成一周排期</button>
+      <label class="field" style="max-width:200px"><span class="field-label">${t('起始日期')}</span><input id="pl-start" type="date" value="${today}"></label>
+      <label class="field"><span class="field-label">${t('要求')} <small>${t('（可留空）')}</small></span><input id="pl-hint" type="text" placeholder="${t('例如：这周主推小叮 / 周末要有直播 / 轻松一点')}"></label>
+      <button class="btn btn-primary" id="pl-gen">${t('🤖 生成一周排期')}</button>
     </div>
     <div id="pl-result"></div>`, { onMount: (mask, close) => { closePlan = close; } });
 
   $('#pl-gen').onclick = async () => {
     const btn = $('#pl-gen');
     btn.disabled = true;
-    btn.innerHTML = '<span class="spinner"></span> 排期中…';
+    btn.innerHTML = `<span class="spinner"></span> ${t('排期中…')}`;
     try {
       const start = new Date($('#pl-start').value + 'T00:00:00');
       const dates = Array.from({ length: 7 }, (_, i) => fmtDate(new Date(start.getTime() + i * 864e5)));
@@ -579,10 +580,10 @@ function openPlanModal() {
       });
       renderPlanResult(plan, groupId, closePlan);
     } catch (e) {
-      toast('排期失败：' + e.message, 3500);
+      toast(t('排期失败：') + e.message, 3500);
     }
     btn.disabled = false;
-    btn.textContent = '🤖 生成一周排期';
+    btn.textContent = t('🤖 生成一周排期');
   };
 }
 
@@ -600,10 +601,10 @@ function renderPlanResult(plan, groupId, closePlan) {
     });
   });
   $('#pl-result').innerHTML = `
-    <h3>排期草稿 <span class="muted" style="font-weight:400">取消勾选不想要的，然后写入日历</span></h3>
+    <h3>${t('排期草稿')} <span class="muted" style="font-weight:400">${t('取消勾选不想要的，然后写入日历')}</span></h3>
     <div>${rows.join('')}</div>
     <div style="display:flex;gap:10px;margin-top:16px">
-      <button class="btn btn-primary" id="pl-apply">✔ 写入日历</button>
+      <button class="btn btn-primary" id="pl-apply">${t('✔ 写入日历')}</button>
     </div>`;
 
   $('#pl-apply').onclick = async () => {
@@ -618,10 +619,10 @@ function renderPlanResult(plan, groupId, closePlan) {
         content: { hook: item.hook || '' },
       });
     });
-    if (!picked.length) return toast('没有勾选任何内容');
+    if (!picked.length) return toast(t('没有勾选任何内容'));
     await api.works.batch(groupId, picked);
     if (O.group?.id === groupId) await reloadWorks();
-    toast(`已写入 ${picked.length} 条排期`);
+    toast(t('已写入 {n} 条排期', { n: picked.length }));
     closePlan?.();
     if (O.group?.id === groupId) {
       O.tab = 'calendar';

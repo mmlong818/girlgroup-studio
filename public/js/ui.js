@@ -1,4 +1,6 @@
 // 通用 UI 工具
+import { t } from './i18n.js';
+
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 export const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -26,7 +28,7 @@ export function modal(html, { onMount } = {}) {
 export function confirmModal(title, text) {
   return new Promise((resolve) => {
     modal(`<h3>${esc(title)}</h3><p class="sub">${esc(text)}</p>
-      <div class="m-foot"><button class="btn btn-ghost" data-x>取消</button><button class="btn btn-danger" data-ok>确认</button></div>`,
+      <div class="m-foot"><button class="btn btn-ghost" data-x>${t('取消')}</button><button class="btn btn-danger" data-ok>${t('确认')}</button></div>`,
       { onMount: (mask, close) => {
         $('[data-x]', mask).onclick = () => { close(); resolve(false); };
         $('[data-ok]', mask).onclick = () => { close(); resolve(true); };
@@ -34,8 +36,20 @@ export function confirmModal(title, text) {
   });
 }
 
+// 图片灯箱：点击放大，再点任意处 / Esc 关闭
+export function lightbox(url) {
+  const mask = document.createElement('div');
+  mask.className = 'lightbox-mask';
+  mask.innerHTML = `<img src="${esc(url)}" alt="">`;
+  const close = () => { mask.remove(); document.removeEventListener('keydown', onKey); };
+  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  mask.addEventListener('click', close);
+  document.addEventListener('keydown', onKey);
+  document.body.appendChild(mask);
+}
+
 export function copyText(text) {
-  navigator.clipboard.writeText(text).then(() => toast('已复制到剪贴板'));
+  navigator.clipboard.writeText(text).then(() => toast(t('已复制到剪贴板')));
 }
 
 // 分段选项控件（替代 ≤5 项的下拉）。内含隐藏 input，故 $('#id').value 读取方式不变。

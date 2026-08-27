@@ -77,6 +77,39 @@ export function publicView() {
   };
 }
 
+// 从远端拉取模型列表（OpenAI 兼容 GET /models）；baseUrl/apiKey 可用表单现填值覆盖，留空沿用已保存的
+export async function fetchRemoteModels({ kind, baseUrl, apiKey } = {}) {
+  const saved = kind === 'image' ? getImage() : getText();
+  const url = normalizeBaseUrl(baseUrl || saved.baseUrl);
+  const key = (typeof apiKey === 'string' && apiKey.trim() && !apiKey.includes('•')) ? apiKey.trim() : saved.apiKey;
+  if (!key) throw settingError('尚未配置 API Key，无法拉取模型列表');
+
+  let res;
+  try {
+    res = await fetch(`${url}/models`, {
+      headers: { Authorization: `Bearer ${key}` },
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch (err) {
+    throw settingError(err.name === 'TimeoutError' ? '拉取模型列表超时' : `无法连接模型 API：${err.message}`);
+  }
+  if (!res.ok) {
+    const err = new Error(`模型 API 返回 ${res.status}${res.status === 401 ? '（API Key 无效）' : ''}`);
+    err.statusCode = 502;
+    throw err;
+  }
+  let data;
+  try { data = await res.json(); } catch { throw settingError('模型 API 返回了无法解析的内容'); }
+
+  const raw = Array.isArray(data) ? data : (data.data || data.models || []);
+  const ids = [...new Set(raw
+    .map((m) => typeof m === 'string' ? m : (m && typeof m.id === 'string' ? m.id : ''))
+    .filter((id) => id && id.length <= 200 && !/[\r\n<>]/.test(id)))]
+    .sort()
+    .slice(0, 500);
+  return ids;
+}
+
 // 保存：apiKey 留空表示沿用旧值（不覆盖）
 export function save(patch = {}) {
   const cur = load();

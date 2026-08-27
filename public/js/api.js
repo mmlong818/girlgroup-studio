@@ -1,21 +1,24 @@
 // API 封装
+import { lang, t } from './i18n.js';
+
 async function req(method, url, body) {
   const res = await fetch(url, {
     method,
     headers: body ? { 'Content-Type': 'application/json' } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });
-  const data = await res.json().catch(() => ({ ok: false, error: '服务器返回了无法解析的内容' }));
-  if (!data.ok) throw new Error(data.error || `请求失败 (${res.status})`);
+  const data = await res.json().catch(() => ({ ok: false, error: t('服务器返回了无法解析的内容') }));
+  if (!data.ok) throw new Error(data.error || t('请求失败 ({status})', { status: res.status }));
   return data;
 }
 
 export const api = {
-  stage: (stage, payload) => req('POST', '/api/stage', { stage, payload }).then((d) => d.result),
+  stage: (stage, payload) => req('POST', '/api/stage', { stage, payload, lang }).then((d) => d.result),
   config: () => req('GET', '/api/config'),
   settings: {
     get: () => req('GET', '/api/settings').then((d) => d.settings),
     save: (patch) => req('POST', '/api/settings', patch).then((d) => d.settings),
+    models: (body) => req('POST', '/api/settings/models', body).then((d) => d.models),
   },
   groups: {
     list: () => req('GET', '/api/groups').then((d) => d.groups),
@@ -41,9 +44,10 @@ export const api = {
   },
   images: {
     upload: (groupId, member, dataUrl) => req('POST', '/api/images/upload', { groupId, member, dataUrl }).then((d) => d.image),
-    generate: (groupId, member, prompt, size, quality, kind) =>
-      req('POST', '/api/images/generate', { groupId, member, prompt, size, quality, kind }).then((d) => d.image),
+    generate: (groupId, member, prompt, size, quality, kind, useRef) =>
+      req('POST', '/api/images/generate', { groupId, member, prompt, size, quality, kind, useRef }).then((d) => d.image),
     setPrimary: (id) => req('POST', `/api/images/${id}/primary`, {}),
+    archive: (id, archived) => req('POST', `/api/images/${id}/archive`, { archived }),
     remove: (id) => req('DELETE', `/api/images/${id}`),
   },
 };

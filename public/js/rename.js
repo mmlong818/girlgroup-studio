@@ -1,20 +1,21 @@
 // 🪄 AI 起名 — 一次 8 个候选，可提要求、可换一批
 import { api } from './api.js';
 import { $, $$, esc, modal } from './ui.js';
+import { t } from './i18n.js';
 
 export function openRename({ kind, context, current, gender = '', target = '', existing = [], onPick }) {
-  modal(`<h3>🪄 AI 起名 · ${esc(kind)}</h3>
-    <p class="muted" style="margin-bottom:4px">当前：${esc(current)}　点击候选名选中，不满意可换一批。</p>
+  modal(`<h3>🪄 ${t('AI 起名')} · ${esc(t(kind))}</h3>
+    <p class="muted" style="margin-bottom:4px">${t('当前：{name}　点击候选名选中，不满意可换一批。', { name: esc(current) })}</p>
     <div id="rn-list" class="rn-grid">
-      <div style="grid-column:1/-1;text-align:center;padding:24px 0"><span class="spinner"></span> 正在起名…</div>
+      <div style="grid-column:1/-1;text-align:center;padding:24px 0"><span class="spinner"></span> ${t('正在起名…')}</div>
     </div>
     <label class="field" style="margin:12px 0 0">
-      <input id="rn-hint" type="text" placeholder="（可选）起名要求，例如：要有古风感 / 两个字 / 带'星'字">
+      <input id="rn-hint" type="text" placeholder="${t("（可选）起名要求，例如：要有古风感 / 两个字 / 带'星'字")}">
     </label>
     <div class="m-foot">
-      <button class="btn btn-ghost" data-x>取消</button>
-      <button class="btn btn-ghost" data-more disabled>🎲 再来一批</button>
-      <button class="btn btn-primary" data-ok disabled>✔ 就用这个</button>
+      <button class="btn btn-ghost" data-x>${t('取消')}</button>
+      <button class="btn btn-ghost" data-more disabled>🎲 ${t('再来一批')}</button>
+      <button class="btn btn-primary" data-ok disabled>✔ ${t('就用这个')}</button>
     </div>`,
     { onMount: (mask, close) => {
       let chosen = null;
@@ -26,7 +27,7 @@ export function openRename({ kind, context, current, gender = '', target = '', e
         chosen = null;
         okBtn.disabled = true;
         moreBtn.disabled = true;
-        list.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:24px 0"><span class="spinner"></span> 正在起名…</div>`;
+        list.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:24px 0"><span class="spinner"></span> ${t('正在起名…')}</div>`;
         try {
           const r = await api.stage('names', {
             kind, context, current, gender, target, existing,
@@ -42,7 +43,7 @@ export function openRename({ kind, context, current, gender = '', target = '', e
             okBtn.disabled = false;
           });
         } catch (e) {
-          list.innerHTML = `<p style="grid-column:1/-1;color:var(--err)">起名失败：${esc(e.message)}</p>`;
+          list.innerHTML = `<p style="grid-column:1/-1;color:var(--err)">${t('起名失败：')}${esc(e.message)}</p>`;
         }
         moreBtn.disabled = false;
       };
