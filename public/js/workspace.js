@@ -2,6 +2,7 @@
 import { api, mapLimit } from './api.js';
 import { $, $$, esc, toast, modal, confirmModal, copyText, download, getPath, setPath, lightbox } from './ui.js';
 import { memberPresets } from './style-presets.js';
+import { renderVisualTab } from './visual.js';
 import { appConfig } from './main.js';
 import { buildMarkdown } from './markdown.js';
 import { showGroupCard } from './card.js';
@@ -39,6 +40,7 @@ async function togglePending(key) {
 
 const TABS = [
   ['people', t('人物设定')],
+  ['visual', t('视觉车间')],
   ['world', t('世界观')],
   ['story', t('故事宇宙')],
 ];
@@ -419,6 +421,8 @@ function renderTab() {
 
   if (currentTab === 'people') {
     renderMemberCards(el, d.members[activeMember], activeMember);
+  } else if (currentTab === 'visual') {
+    renderVisualTab(el, G, async () => { G = await api.groups.get(G.id); renderTab(); });
   } else if (currentTab === 'world') {
     renderWorldTab(el, d);
   } else if (currentTab === 'story') {
@@ -612,10 +616,24 @@ function renderMemberCards(el, m, i) {
     inp.click();
   };
   const genBtn = el.querySelector('#mc-gen');
-  if (genBtn) genBtn.onclick = async () => {
-    genBtn.disabled = true; genBtn.innerHTML = `<span class="spinner"></span> ${t('生成中…')}`;
-    try { const img = await api.images.generate(group.id, m.codename, genPrompt, '1024x1536', 'medium'); if (!primary) await api.images.setPrimary(img.id); toast(t('已生成')); await reload(); }
-    catch (e) { toast(t('生成失败：') + e.message, 4000); genBtn.disabled = false; genBtn.textContent = '✦ ' + t('生成形象'); }
+  // 先弹窗展示自动生成的提示词，确认/修改后再生成
+  if (genBtn) genBtn.onclick = () => {
+    modal(`<h3>✦ ${t('生成形象')} · ${esc(m.codename)}</h3>
+      <p class="sub" style="margin-bottom:10px">${t('已按角色设定自动生成提示词，可修改后再生成')}</p>
+      <div class="ms-prompt-box"><textarea id="mcg-prompt" rows="8">${esc(genPrompt)}</textarea></div>
+      <div class="m-foot">
+        <button class="btn btn-ghost" data-x>${t('取消')}</button>
+        <button class="btn btn-primary" data-ok>✦ ${t('AI 生成')}</button>
+      </div>`, { onMount: (mask, close) => {
+      $('[data-x]', mask).onclick = close;
+      $('[data-ok]', mask).onclick = async () => {
+        const prompt = $('#mcg-prompt', mask).value.trim() || genPrompt;
+        close();
+        genBtn.disabled = true; genBtn.innerHTML = `<span class="spinner"></span> ${t('生成中…')}`;
+        try { const img = await api.images.generate(group.id, m.codename, prompt, '1024x1536', 'medium'); if (!primary) await api.images.setPrimary(img.id); toast(t('已生成')); await reload(); }
+        catch (e) { toast(t('生成失败：') + e.message, 4000); genBtn.disabled = false; genBtn.textContent = '✦ ' + t('生成形象'); }
+      };
+    } });
   };
   if (primary) el.querySelector('.mc-photo-main img')?.addEventListener('click', () => lightbox(primary.url));
   el.querySelector('.mc-gallery')?.addEventListener('click', async (e) => {

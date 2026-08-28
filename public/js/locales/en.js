@@ -707,4 +707,10 @@ export const EN = {
   "归档后可在归档区删除": "After archiving, delete from the archive section",
   "操作失败：": "Action failed: ",
   "已归档，可在创作间或视觉车间的归档区恢复或删除": "Archived — restore or delete it from the archive section in Studio or Visuals",
+  "生成提示词（点上方模板自动填充，可自由修改）": "Prompt (click a template above to auto-fill; edit freely)",
+  "已按角色设定自动生成提示词，可修改后再生成": "A prompt was auto-composed from the character profile — edit it, then generate",
+  "视觉车间": "Visuals",
+  "AI 创作提示词": "AI-Compose Prompt",
+  "AI 创作失败，已使用本地模板：": "AI compose failed, using local template: ",
+  "成员造型": "Member Look",
 };

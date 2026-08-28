@@ -14,19 +14,27 @@ export async function callGLM(messages, { temperature = 0.85, model } = {}) {
   if (cfg.thinking === false) body.thinking = { type: 'disabled' };
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 300_000);
+  const doFetch = () => fetch(`${base}/chat/completions`, {
+    method: 'POST',
+    signal: controller.signal,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${cfg.apiKey}`,
+    },
+    body: JSON.stringify(body),
+  });
   try {
-    const res = await fetch(`${base}/chat/completions`, {
-      method: 'POST',
-      signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${cfg.apiKey}`,
-      },
-      body: JSON.stringify(body),
-    });
+    let res = await doFetch();
     if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`GLM API ${res.status}: ${body.slice(0, 300)}`);
+      const errText = await res.text();
+      // glm-5.3 等"始终思考"模型不接受 disabled：自动降级为最低思考档重试
+      if (res.status === 400 && body.thinking?.type === 'disabled' && /1210|不支持关闭思考/.test(errText)) {
+        body.thinking = { type: 'enabled', effort: 'low' };
+        res = await doFetch();
+        if (!res.ok) throw new Error(`GLM API ${res.status}: ${(await res.text()).slice(0, 300)}`);
+      } else {
+        throw new Error(`GLM API ${res.status}: ${errText.slice(0, 300)}`);
+      }
     }
     const data = await res.json();
     return data.choices?.[0]?.message?.content ?? '';

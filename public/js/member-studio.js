@@ -301,13 +301,40 @@ function renderCatPanel(el, G, M, catId, rerender) {
 
   let selectedStyle = cat.styles[0];
 
-  // 两步流：第 1 步改选项只做标记提醒，点「生成提示词」才写入文本框；第 2 步生图严格用文本框内容
+  // 两步流：第 1 步改选项只做标记提醒，点「生成提示词」调用文字模型按角色档案动态创作
+  // （本地模板只作草稿骨架与失败兜底）；第 2 步生图严格用文本框内容
   const promptTa = $('#ms-prompt', el);
   const composeBtn = $('#ms-compose', el);
   const markStale = () => composeBtn?.classList.add('attn');
-  const doCompose = () => {
-    if (promptTa) promptTa.value = compose(selectedStyle, $('#ms-hint', el)?.value.trim() || '');
-    composeBtn?.classList.remove('attn');
+  const doCompose = async () => {
+    if (!promptTa) return;
+    const hint = $('#ms-hint', el)?.value.trim() || '';
+    const draft = compose(selectedStyle, hint);
+    composeBtn.disabled = true;
+    composeBtn.innerHTML = `<span class="spinner"></span> ${t('AI 创作中…')}`;
+    try {
+      const r = await api.stage('imagePrompt', {
+        member: {
+          codename: M.codename, archetype: M.archetype, personality: M.personality,
+          appearance: M.appearance, fashion: M.fashion, stageOutfit: M.stageOutfit,
+          accessories: M.accessories, color: M.color, contrast: M.contrast,
+        },
+        concept: `《${G.data.concept.name}》${G.data.concept.concept || ''}（气质：${G.data.concept.vibe || ''}；视觉：${G.data.concept.visualStyle || ''}）`,
+        task: `${t(cat.label)} / ${t(selectedStyle)}`,
+        hint,
+        draft,
+      });
+      let out = r.prompt;
+      const suf = styleSuffix(G, { hasRefs: refs.length > 0 });
+      if (suf && !/ART STYLE LOCK/i.test(out)) out += suf;
+      promptTa.value = out;
+    } catch (e) {
+      promptTa.value = draft;
+      toast(t('AI 创作失败，已使用本地模板：') + e.message, 3500);
+    }
+    composeBtn.disabled = false;
+    composeBtn.innerHTML = `📝 ${t('生成提示词')}`;
+    composeBtn.classList.remove('attn');
   };
   if (composeBtn) composeBtn.onclick = doCompose;
   const hintInput = $('#ms-hint', el);
@@ -326,8 +353,7 @@ function renderCatPanel(el, G, M, catId, rerender) {
 
   // 入队即返回，可连续排多个风格；队列逐个执行
   $('#ms-gen-btn', el).onclick = () => {
-    if (!promptTa?.value.trim()) doCompose();
-    const prompt = promptTa?.value.trim() || compose(selectedStyle, '');
+    const prompt = promptTa?.value.trim() || compose(selectedStyle, $('#ms-hint', el)?.value.trim() || '');
     const useRef = refs.length > 0 && ($('#ms-useref', el)?.checked ?? true);
     const label = `${t(cat.label)} · ${t(selectedStyle)}`;
     genQueue.push({

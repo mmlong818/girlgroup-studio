@@ -119,10 +119,13 @@ function renderPanel(el, G, reload) {
             ${presets.map((p) => `<button class="vis-preset-chip" data-prompt="${esc(p.prompt)}"${p.size ? ` data-size="${esc(p.size)}"` : ''}>${esc(p.label)}</button>`).join('')}
           </div>` : ''}
 
-          <details class="vis-prompt-detail">
-            <summary>${t('自定义提示词')}</summary>
-            <textarea id="vs-prompt" rows="4">${esc(defaultP)}</textarea>
-          </details>
+          <div class="ms-prompt-box">
+            <div class="ms-prompt-head">
+              <span class="ms-prompt-label">${t('生成提示词（点上方模板自动填充，可自由修改）')}</span>
+              <button type="button" class="chip-mini" id="vs-ai-prompt">🪄 ${t('AI 创作提示词')}</button>
+            </div>
+            <textarea id="vs-prompt" rows="5">${esc(defaultP)}</textarea>
+          </div>
 
           <div class="vis-opt-row">
             <span class="vis-opt-label">${t('尺寸')}</span>
@@ -195,13 +198,39 @@ function renderPanel(el, G, reload) {
     chip.onclick = () => {
       const ta = $('#vs-prompt', el);
       if (ta) ta.value = chip.dataset.prompt;
-      const d = el.querySelector('.vis-prompt-detail');
-      if (d) d.open = true;
       if (chip.dataset.size) {
         el.querySelector(`[data-seg="vs-size"] .seg-opt[data-val="${chip.dataset.size}"]`)?.click();
       }
     };
   });
+
+  // AI 创作提示词：把当前文本框内容作草稿，交给文字模型按档案重写
+  const aiBtn = $('#vs-ai-prompt', el);
+  if (aiBtn) aiBtn.onclick = async () => {
+    const ta = $('#vs-prompt', el);
+    if (!ta) return;
+    const draft = ta.value.trim() || defaultP;
+    aiBtn.disabled = true;
+    aiBtn.innerHTML = `<span class="spinner"></span> ${t('AI 创作中…')}`;
+    try {
+      const pick = (mm) => ({
+        codename: mm.codename, archetype: mm.archetype, appearance: mm.appearance,
+        fashion: mm.fashion, stageOutfit: mm.stageOutfit, color: mm.color,
+      });
+      const r = await api.stage('imagePrompt', {
+        member: isPoster ? (G.data.members || []).map(pick) : pick(m),
+        concept: `《${G.data.concept.name}》${G.data.concept.concept || ''}（气质：${G.data.concept.vibe || ''}；视觉：${G.data.concept.visualStyle || ''}）`,
+        task: isPoster ? t('团体海报') : `${t('成员造型')} · ${m.codename}`,
+        hint: '',
+        draft,
+      });
+      ta.value = r.prompt;
+    } catch (e) {
+      toast(t('AI 创作失败，已使用本地模板：') + e.message, 3500);
+    }
+    aiBtn.disabled = false;
+    aiBtn.innerHTML = `🪄 ${t('AI 创作提示词')}`;
+  };
 
   // AI 生成
   $('#vs-gen', el).onclick = async () => {

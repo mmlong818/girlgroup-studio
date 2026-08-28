@@ -3,6 +3,7 @@ import { api } from './api.js';
 import { $, $$, esc, toast, modal, confirmModal, copyText, segmented } from './ui.js';
 import { renderStudio } from './ops-studio.js';
 import { renderMemberStudioTab } from './member-studio.js';
+import { renderVisualTab } from './visual.js';
 import { openSettings } from './settings-ui.js';
 import { t } from './i18n.js';
 
@@ -35,7 +36,7 @@ const icon = (k) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" 
 
 const fmtDate = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-const VALID_TABS = ['overview', 'calendar', 'daily', 'video', 'studio', 'works'];
+const VALID_TABS = ['overview', 'calendar', 'daily', 'video', 'studio', 'visual', 'works'];
 
 export async function renderOps(app, groupId, initialTab, isCurrent = () => true) {
   if (O.group?.id !== groupId) { O.topics = {}; O.generating = {}; O.hints = {}; }
@@ -57,7 +58,7 @@ export async function renderOps(app, groupId, initialTab, isCurrent = () => true
   // 导航按流水线分组：指挥台 → 创作 → 归档（带步骤编号，左栏即动线）
   const NAV_GROUPS = [
     ['01', t('指挥台'), [['overview', t('总览')], ['calendar', t('发布日历')]]],
-    ['02', t('创作'), [['daily', t('日常内容')], ['video', t('短视频')], ['studio', t('形象生成')]]],
+    ['02', t('创作'), [['daily', t('日常内容')], ['video', t('短视频')], ['studio', t('形象生成')], ['visual', t('视觉车间')]]],
     ['03', t('归档'), [['works', t('作品库')]]],
   ];
   document.body.classList.add('ws-mode');
@@ -116,6 +117,12 @@ function renderOpsTab() {
   if (O.tab === 'works') return renderWorksLib(el);
   if (O.tab === 'video' || O.tab === 'daily') return renderStudio(el, O, O.tab, openWork, reloadWorks);
   if (O.tab === 'studio') return renderMemberStudioTab(el, O.group);
+  if (O.tab === 'visual') {
+    return renderVisualTab(el, O.group, async () => {
+      O.group = await api.groups.get(O.group.id);
+      renderOpsTab();
+    });
+  }
 }
 
 function gotoTab(tab) {

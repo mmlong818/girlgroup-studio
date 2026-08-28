@@ -103,6 +103,8 @@ function validateStageResultShape(stage, result) {
     });
   } else if (stage === 'reroll') {
     if (!Object.hasOwn(result, 'value')) modelFail('缺少 value');
+  } else if (stage === 'imagePrompt') {
+    needString(result.prompt, 'prompt');
   } else if (stage === 'concept') {
     needString(result.name, 'name');
     needString(result.concept, 'concept');
