@@ -10,7 +10,7 @@ const PRESETS = [
   '未来都市 AI 偶像团', '赛博朋克反叛组合', '吸血鬼贵族男团', '校园怪谈偶像团',
 ];
 
-let wiz = null; // { input, options, chosen, state: {concept, members, relations, story, operations}, locked: Set }
+let wiz = null; // { input, options, chosen, state: {concept, members, relations}, locked: Set }
 
 export function renderWizard(app) {
   wiz = { input: null, options: null, chosen: null, state: {}, locked: new Set() };
@@ -210,13 +210,6 @@ async function genPhase(key, feedback = '', onProgress = null) {
     });
   } else if (key === 'relations') {
     st.relations = await api.stage('relations', { concept: st.concept, members: st.members, feedback });
-  } else if (key === 'story') {
-    st.story = await api.stage('story', { concept: st.concept, members: st.members, relations: relationsOrStub(), feedback });
-  } else if (key === 'operations') {
-    st.operations = await api.stage('operations', {
-      concept: st.concept, members: st.members, relations: relationsOrStub(),
-      story: st.story, positioning: input.positioning, audience: input.audience, feedback,
-    });
   }
 }
 
@@ -435,27 +428,6 @@ function previewHTML(key) {
         <h4>${esc(p.a)} × ${esc(p.b)} <span class="badge">${esc(p.type)}</span> ${ed(`relations.pairs.${i}.type`, t('关系类型'))}</h4>
         <p>${esc(p.dynamic)} ${ed(`relations.pairs.${i}.dynamic`, t('关系描述'))}</p></div>`).join('')}
       <p><b>${t('CP 线：')}</b>${(r.cpLines || []).map((cp) => `${esc(cp.pair)}（${esc(cp.fanName)}）`).join('、')}</p>`;
-  }
-  if (key === 'story') {
-    const s = st.story;
-    return `<p style="font-size:15px;margin-bottom:12px">${esc(s.premise)} ${ed('story.premise', t('故事前提'))}</p>
-      <p style="margin-bottom:4px"><b>${t('主要矛盾：')}</b>${esc(s.mainConflict)} ${ed('story.mainConflict', t('主要矛盾'))}</p>
-      <p style="margin-bottom:4px"><b>${t('敌对势力：')}</b>${esc(s.antagonist)} ${ed('story.antagonist', t('敌对势力'))}</p>
-      <p style="margin-bottom:12px"><b>${t('团体危机：')}</b>${esc(s.teamCrisis)} ${ed('story.teamCrisis', t('团体危机'))}</p>
-      <h3>${t('第一季')}</h3><ul class="ep-list">${(s.season1 || []).map((e, i) => `
-        <li><span class="ep-no">EP${e.ep}</span><div><b>${esc(e.title)}</b> ${ed(`story.season1.${i}.title`, t('EP{ep} 标题', { ep: e.ep }))} —
-        ${esc(e.summary)} ${ed(`story.season1.${i}.summary`, t('EP{ep} 梗概', { ep: e.ep }))}</div></li>`).join('')}</ul>`;
-  }
-  if (key === 'operations') {
-    const o = st.operations;
-    return `<p style="margin-bottom:6px"><b>${t('首支单曲：')}</b>《${esc(o.debutSingle?.title)}》${ed('operations.debutSingle.title', t('单曲名'))}<button class="ed-btn" data-rename="operations.debutSingle.title" data-kind="单曲名" data-target="${esc(o.debutSingle?.concept || '')}" title="${t('AI 起名')}">🪄</button> —
-        ${esc(o.debutSingle?.concept)} ${ed('operations.debutSingle.concept', t('歌曲概念'))}</p>
-      <p style="margin-bottom:6px"><b>${t('直播栏目：')}</b>${(o.liveShows || []).map((x) => esc(x.name)).join('、')}</p>
-      <p style="margin-bottom:6px"><b>${t('短视频栏目：')}</b>${(o.shortVideoColumns || []).map((x) => esc(x.name)).join('、')}</p>
-      <p style="margin-bottom:6px"><b>${t('周边：')}</b>${(o.merch || []).map((x) => esc(x.name)).join('、')}</p>
-      <p style="margin-bottom:6px"><b>${t('表情包方向：')}</b>${esc(o.memeDirection)} ${ed('operations.memeDirection', t('表情包方向'))}</p>
-      <p><b>${t('商业文案：')}</b>${esc(o.pitchCopy)} ${ed('operations.pitchCopy', t('商业文案'))}</p>
-      <p class="muted" style="margin-top:10px">${t('栏目和周边的细节在成团后的工作台可继续编辑。')}</p>`;
   }
   return '';
 }

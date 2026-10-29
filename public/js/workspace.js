@@ -37,6 +37,7 @@ async function togglePending(key) {
 
 const TABS = [
   ['people', t('人物设定')],
+  ['relations', t('关系网络')],
   ['world', t('世界观')],
   ['story', t('故事宇宙')],
   ['plan', t('运营方案')],
@@ -131,15 +132,16 @@ function openShareMenu() {
       <button class="btn btn-ghost" data-s="card">🪪 ${t('生成成团卡')}</button>
       <button class="btn btn-ghost" data-s="md">📄 ${t('导出企划书')} (.md)</button>
       <button class="btn btn-ghost" data-s="json">⤓ ${t('完整备份')} (.json)</button>
-    </div>`, {
+    </div>
+    <div class="m-foot" style="justify-content:flex-start"><button class="btn btn-danger btn-sm" data-del-group>${t('删除企划')}</button></div>`, {
     onMount: (mask) => {
       const act = {
         link: () => copyText(`${location.origin}/g/${group.shareId}`),
         card: () => showGroupCard(group),
-        md: () => download(`${group.data.concept.name}-企划书.md`, buildMarkdown(group.data), 'text/markdown;charset=utf-8'),
+        md: () => download(t('{name}-企划书.md', { name: group.data.concept.name }), buildMarkdown(group.data), 'text/markdown;charset=utf-8'),
         json: async () => {
           const backup = await api.backups.get(group.id);
-          download(`${group.data.concept.name}-完整备份.json`, JSON.stringify(backup, null, 2), 'application/json;charset=utf-8');
+          download(t('{name}-完整备份.json', { name: group.data.concept.name }), JSON.stringify(backup, null, 2), 'application/json;charset=utf-8');
         },
       };
       mask.querySelectorAll('[data-s]').forEach((b) => b.onclick = async () => {
@@ -147,43 +149,22 @@ function openShareMenu() {
         try { await act[b.dataset.s](); close(); }
         catch (err) { toast(t('导出失败：') + err.message, 3500); b.disabled = false; }
       });
+      mask.querySelector('[data-del-group]').onclick = async () => {
+        close();
+        const name = group.data.concept.name;
+        if (!(await confirmModal(t('删除企划'), t('确定删除「{name}」吗？全部设定、作品和图片都会被永久删除，无法恢复。建议先导出完整备份。', { name })))) return;
+        try {
+          await api.groups.remove(group.id);
+          toast(t('已删除「{name}」', { name }));
+          location.hash = '';
+        } catch (err) { toast(t('删除失败：') + err.message, 3500); }
+      };
     },
   });
 }
 
 async function save(group = G) {
   await api.groups.update(group.id, group.data);
-}
-
-// 人物设定是否完成：全员都已生成成长经历
-function peopleDone() {
-  const d = G.data;
-  const n = d.members?.length || 0;
-  return n > 0 && Array.isArray(d.history) && d.members.every((_, i) => d.history[i]);
-}
-
-// ── 标签栏右侧：下一步 CTA + 运营中心 ──
-function updateNavAside() {
-  const aside = $('#ws-tabs-aside');
-  if (!aside) return;
-  const prog = G.data.progress || {};
-  let cta = '';
-  if (!peopleDone()) {
-    cta = `<button class="btn btn-primary btn-sm" id="nav-gen-history">✦ ${t('生成全员经历')}</button>`;
-  } else if (!prog.visual) {
-    cta = `<button class="btn btn-primary btn-sm" id="nav-go-visual">${t('为成员选定主图')} →</button>`;
-  } else {
-    cta = `<span class="nav-celebrate">✓ ${t('全员就位')}</span>`;
-  }
-  aside.innerHTML = `${cta}<a class="btn btn-ghost btn-sm" href="#/ops/${esc(G.id)}">${t('运营中心')} →</a>`;
-  aside.querySelector('#nav-gen-history')?.addEventListener('click', () => {
-    if (currentTab !== 'people') { currentTab = 'people'; renderTab(); }
-    generateHistory();
-  });
-  aside.querySelector('#nav-go-visual')?.addEventListener('click', () => {
-    const tab = $('#ws-tabs-main [data-tab="visual"]');
-    if (tab) tab.click();
-  });
 }
 
 // ── 可编辑字段行 ──
@@ -417,7 +398,7 @@ async function generateModule(moduleKey, title) {
 function renderTabNav() {
   const nav = $('#ws-tabs-main');
   if (!nav) return;
-  nav.innerHTML = TABS.map(([k, label]) => `<button class="tab ${k === currentTab ? 'active' : ''}" data-tab="${k}">${label}</button>`).join('')
+  nav.innerHTML = TABS.filter(([k]) => k !== 'relations' || G.data.members.length > 1).map(([k, label]) => `<button class="tab ${k === currentTab ? 'active' : ''}" data-tab="${k}">${label}</button>`).join('')
     + `<a class="tab" href="${esc(visualHref())}">${t('视觉车间')} ↗</a>`;
 }
 
@@ -433,6 +414,8 @@ function renderTab() {
     renderMemberCards(el, d.members[activeMember], activeMember);
   } else if (currentTab === 'world') {
     renderWorldTab(el, d);
+  } else if (currentTab === 'relations') {
+    renderRelationsTab(el, d);
   } else if (currentTab === 'plan') {
     renderPlanTab(el, d);
   } else if (currentTab === 'story') {
@@ -633,55 +616,6 @@ function renderMemberCards(el, m, i) {
   });
 }
 
-// ── 个人经历（成团后补充） ──
-function renderHistoryTab(el) {
-  const d = G.data;
-  const prog = d.progress || {};
-  if (!d.history || !d.history.length) {
-    el.innerHTML = `<div class="card" style="text-align:center;padding:48px 26px">
-      <div class="en-label">BIOGRAPHY</div>
-      <h2>${t('补充成员个人经历')}</h2>
-      <p class="sub" style="max-width:520px;margin:8px auto 22px">${t('为每位成员生成成长背景、入团经历、与队友的初遇、重要事件和日常切片——让粉丝能完整讲出TA的故事，也是后续内容运营的素材库。')}</p>
-      <button class="btn btn-primary btn-big" id="btn-gen-history">✦ ${t('生成全员经历')}</button>
-    </div>`;
-    $('#btn-gen-history').onclick = () => generateHistory();
-    return;
-  }
-  el.innerHTML = `<div class="card" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-    <div style="flex:1;min-width:240px"><b>${t('经历确认')}</b><div class="muted">${t('每位成员可单独重做（🎲），字段可直接编辑（✏️）。确认后作为内容运营的依据。')}</div></div>
-    ${prog.history
-      ? `<span class="badge" style="background:var(--ok);color:#fff">✔ ${t('已确认')}</span><button class="btn btn-ghost btn-sm" data-prog="history" data-v="0">${t('取消确认')}</button>`
-      : `<button class="btn btn-primary" data-prog="history" data-v="1">✔ ${t('经历已确认')}</button>`}
-  </div>
-  <div class="cols-2">${d.members.map((m, i) => {
-    const h = d.history[i];
-    if (!h) return `<div class="card"><h3 style="margin-top:0;color:${esc(m.color)}">${esc(m.codename)}</h3>
-      <button class="btn btn-ghost btn-sm" data-gen-one="${i}">✦ ${t('生成TA的经历')}</button></div>`;
-    const hKey = `history.${i}`;
-    const hLocked = isLocked(hKey);
-    const hPending = isPending(hKey);
-    return `<div class="card${hPending ? ' node-pending' : ''}">
-      <div class="module-head node-head">
-        <h3 style="margin-top:0;color:${esc(m.color)}">${t('{name} 的经历', { name: esc(m.codename) })}
-          ${hPending ? `<span class="node-tag node-tag-pend">${t('待处理')}</span>` : ''}
-          ${hLocked  ? '<span class="node-tag node-tag-lock">🔒</span>' : ''}
-        </h3>
-        <div class="node-acts">
-          ${!hLocked ? `<button class="btn btn-ghost btn-sm" data-gen-one="${i}">🎲 ${t('重做')}</button>` : ''}
-          <button class="btn btn-ghost btn-sm" data-lock="${hKey}" title="${hLocked ? t('解锁') : t('锁定')}">${hLocked ? '🔓' : '🔒'}</button>
-          <button class="btn btn-ghost btn-sm${hPending ? ' node-act-pend' : ''}" data-pending="${hKey}" title="${hPending ? t('取消待处理') : t('标记待处理')}">${hPending ? '✅' : '🏷'}</button>
-        </div>
-      </div>
-      <dl>${fRow(t('成长背景'), `${hKey}.background`)}${fRow(t('转折点'), `${hKey}.turning`)}
-      ${fRow(t('入团经历'), `${hKey}.joining`)}${fRow(t('队友初遇'), `${hKey}.firstMeet`)}
-      ${(h.milestones || []).map((ms, j) => fRow(ms.title || t('事件{n}', { n: j + 1 }), `${hKey}.milestones.${j}.desc`)).join('')}
-      ${fRow(t('梦想与恐惧'), `${hKey}.dream`)}${fRow(t('日常切片'), `${hKey}.dailyLife`)}</dl>
-    </div>`;
-  }).join('')}</div>`;
-  el.querySelectorAll('[data-prog]').forEach((b) => b.onclick = () => setProgress(b.dataset.prog, b.dataset.v === '1'));
-  el.querySelectorAll('[data-gen-one]').forEach((b) => b.onclick = () => generateHistory(Number(b.dataset.genOne)));
-}
-
 // 成长经历浮动页（只读展示 + 重写入口）
 function openBioModal(i) {
   const d = G.data;
@@ -765,6 +699,7 @@ async function generateHistory(onlyIndex = null) {
 function renderEmptyModule(el, key) {
   const info = {
     story: { en: 'STORY', title: t('故事宇宙'), desc: t('基于团队概念、成员秘密和关系，生成可连载的故事主线、成员个人线和第一季剧情。') },
+    relations: { en: 'RELATIONSHIPS', title: t('关系网络'), desc: t('梳理成员之间的搭档、对立和 CP 线——短视频选题、AI 排期都会用它找内容。') },
     operations: { en: 'OPERATIONS PLAN', title: t('运营方案'), desc: t('生成首支单曲、直播与短视频栏目、海报创意和周边方向——AI 排期和团体海报都会用到它。') },
   }[key];
   el.innerHTML = `<div class="card" style="text-align:center;padding:48px 26px">
@@ -774,6 +709,24 @@ function renderEmptyModule(el, key) {
     <button class="btn btn-primary btn-big" id="btn-gen-module">✦ ${t('生成{name}', { name: info.title })}</button>
   </div>`;
   $('#btn-gen-module').onclick = () => generateModule(key, t('正在生成{name}…', { name: info.title }));
+}
+
+// ── 关系网络 Tab ──
+function renderRelationsTab(el, d) {
+  const r = d.relations;
+  if (!r || !r.overview && !(r.pairs || []).length) return renderEmptyModule(el, 'relations');
+  el.innerHTML = `<div class="card${isPending('relations') ? ' node-pending' : ''}">
+      ${nodeHead(t('关系格局'), 'relations', { regen: 'relations' })}
+      <dl>${fRow(t('总述'), 'relations.overview')}${fRow(t('全员化学反应'), 'relations.teamDynamic')}</dl>
+    </div>
+    <div class="cols-2">${(r.pairs || []).map((p, i) => `<div class="card">
+      <h3 style="margin-top:0"><span style="color:${esc(memberColor(p.a))}">${esc(p.a)}</span> × <span style="color:${esc(memberColor(p.b))}">${esc(p.b)}</span> <span class="badge">${esc(p.type || '')}</span></h3>
+      <dl>${fRow(t('关系描述'), `relations.pairs.${i}.dynamic`)}${fRow(t('标志互动'), `relations.pairs.${i}.moments`)}${fRow(t('内容点子'), `relations.pairs.${i}.contentIdeas`)}</dl>
+    </div>`).join('')}</div>
+    ${(r.cpLines || []).length || r.comedyDuo ? `<div class="card"><dl>
+      ${(r.cpLines || []).map((cp, i) => fRow(`CP · ${cp.pair}${cp.fanName ? `（${cp.fanName}）` : ''}`, `relations.cpLines.${i}.why`)).join('')}
+      ${r.comedyDuo ? fRow(t('搞笑搭档 · {pair}', { pair: r.comedyDuo.pair || '' }), 'relations.comedyDuo.why') : ''}
+    </dl></div>` : ''}`;
 }
 
 // ── 运营方案 Tab ──
@@ -801,19 +754,6 @@ function renderPlanTab(el, d) {
     </dl></div>`;
 }
 
-async function setProgress(key, val) {
-  const group = G;
-  group.data.progress = { ...(group.data.progress || {}), [key]: val };
-  await save(group);
-  toast(val ? t('已确认') : t('已取消确认'));
-  if (G === group) renderTab();
-}
-
 function memberColor(codename) {
   return G.data.concept.members.find((m) => codename?.includes(m.codename))?.color || 'var(--brand-a)';
-}
-
-function promptBlock(text) {
-  if (!text) return '';
-  return `<div class="prompt-block">${esc(text)}<button class="copy-btn" data-text="${esc(text)}">${t('复制')}</button></div>`;
 }

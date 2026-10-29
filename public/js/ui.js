@@ -14,12 +14,15 @@ export function toast(msg, ms = 2000) {
   setTimeout(() => t.remove(), ms);
 }
 
-export function modal(html, { onMount } = {}) {
+// beforeClose：点遮罩关闭前的拦截，返回 false（或 Promise<false>）则不关闭
+export function modal(html, { onMount, beforeClose } = {}) {
   const mask = document.createElement('div');
   mask.className = 'modal-mask';
   mask.innerHTML = `<div class="modal">${html}</div>`;
   const close = () => mask.remove();
-  mask.addEventListener('click', (e) => { if (e.target === mask) close(); });
+  mask.addEventListener('click', async (e) => {
+    if (e.target === mask && (!beforeClose || await beforeClose())) close();
+  });
   document.body.appendChild(mask);
   onMount?.(mask, close);
   return close;

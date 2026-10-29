@@ -166,6 +166,9 @@ function daysUntil(month, day) {
   return Math.round((t - now) / 864e5);
 }
 
+// 有 AI 内容包生成按钮的作品类型（其余类型不提醒"缺内容包"）
+const AI_TYPES = ['short_video', 'daily', 'post'];
+
 function renderOverview(el) {
   const g = O.group, d = g.data, c = d.concept;
   const today = fmtDate(new Date());
@@ -193,7 +196,7 @@ function renderOverview(el) {
   O.works.filter((w) => w.status === 'scheduled' && w.publishAt && w.publishAt >= today && w.publishAt <= weStr)
     .sort((a, b) => a.publishAt.localeCompare(b.publishAt))
     .forEach((w) => {
-      if (!(w.content?.script || w.content?.copy)) todos.push({ t: t('「{title}」还没生成内容包', { title: w.title }), sub: t('{date} 待发', { date: w.publishAt.slice(5) }), tab: 'works' });
+      if (AI_TYPES.includes(w.type) && !(w.content?.script || w.content?.copy)) todos.push({ t: t('「{title}」还没生成内容包', { title: w.title }), sub: t('{date} 待发', { date: w.publishAt.slice(5) }), tab: 'works' });
     });
   if (overdue.length) todos.push({ t: t('{n} 条内容逾期未发', { n: overdue.length }), sub: t('去发布日历处理'), tab: 'calendar', warn: true });
   const lastDated = O.works.filter((w) => w.publishAt).map((w) => w.publishAt).sort().pop();
@@ -406,6 +409,10 @@ export function openWork(work, presetDate = '', presetStatus = '') {
   const isNew = !work;
   const w = work || { type: 'short_video', title: '', members: '', channel: '', status: presetStatus || (presetDate ? 'scheduled' : 'idea'), publishAt: presetDate, content: {} };
   const memberNames = group.data.members.map((m) => m.codename);
+  // 编辑副本：未保存的 AI 内容不污染列表里的原对象
+  const content = structuredClone(w.content || {});
+  let unsaved = false;
+  let confirmLeave = () => true;
 
   modal(`<h3>${isNew ? t('＋ 新建作品') : t('作品详情')}</h3>
     <label class="field"><span class="field-label">${t('标题')}</span><input id="wk-title" type="text" value="${esc(w.title)}" placeholder="${t('作品标题')}"></label>
@@ -420,53 +427,65 @@ export function openWork(work, presetDate = '', presetStatus = '') {
       <label class="field"><span class="field-label">${t('出演成员')} <small>${t('（逗号分隔，或"全员"）')}</small></span><input id="wk-members" type="text" value="${esc(w.members)}" placeholder="${esc(memberNames.join('、'))}"></label>
       <label class="field"><span class="field-label">${t('发布账号')} <small>${t('（可留空）')}</small></span><input id="wk-channel" type="text" value="${esc(w.channel)}" placeholder="${t('团号 / 某成员个人号')}"></label>
     </div>
-    <div id="wk-content">${contentHTML(w)}</div>
+    <div id="wk-content">${contentHTML(content)}</div>
     <div class="m-foot" style="justify-content:space-between">
       <div>${isNew ? '' : `<button class="btn btn-danger btn-sm" data-del>${t('删除')}</button>`}</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
-        ${aiButtonsHTML(w)}
-        ${(w.content?.script || w.content?.copy) ? `<button class="btn btn-ghost" data-copyall>${t('📋 复制内容包')}</button>` : ''}
+        ${aiButtonsHTML(w.type, content)}
+        ${(content.script || content.copy) ? `<button class="btn btn-ghost" data-copyall>${t('📋 复制内容包')}</button>` : ''}
         ${!isNew && w.status === 'scheduled' ? `<button class="btn btn-ghost" data-pub style="color:var(--ok);border-color:#bcd9c8">${t('✅ 标记已发布')}</button>` : ''}
         <button class="btn btn-ghost" data-x>${t('关闭')}</button>
         <button class="btn btn-primary" data-ok>${isNew ? t('创建') : t('保存')}</button>
       </div>
     </div>`,
-    { onMount: (mask, close) => {
+    { beforeClose: () => confirmLeave(), onMount: (mask, close) => {
+      confirmLeave = () => !unsaved || confirmModal(t('放弃未保存的内容？'), t('AI 生成的内容还没保存，关闭后会丢失。'));
       const readForm = () => ({
-        title: $('#wk-title', mask).value.trim() || '未命名作品',
+        title: $('#wk-title', mask).value.trim() || t('未命名作品'),
         type: $('#wk-type', mask).value,
         status: $('#wk-status', mask).value,
         publish_at: $('#wk-date', mask).value || null,
         members: $('#wk-members', mask).value.trim(),
         channel: $('#wk-channel', mask).value.trim(),
-        content: w.content,
+        content,
       });
-      $('[data-x]', mask).onclick = close;
-      $('[data-ok]', mask).onclick = async () => {
-        const fields = readForm();
-        if (isNew) await api.works.create(groupId, fields);
-        else await api.works.update(w.id, fields);
-        if (O.group?.id === groupId) await reloadWorks();
-        close();
-        toast(isNew ? t('已创建') : t('已保存'));
-        if (O.group?.id === groupId) renderOpsTab();
+      // 保存类操作统一：失败提示且弹窗保留
+      const commit = async (btn, run, doneMsg) => {
+        btn.disabled = true;
+        try {
+          await run();
+          if (O.group?.id === groupId) await reloadWorks();
+          close();
+          toast(doneMsg);
+          if (O.group?.id === groupId) renderOpsTab();
+        } catch (e) {
+          toast(t('保存失败：') + e.message, 3500);
+          btn.disabled = false;
+        }
       };
+      $('[data-x]', mask).onclick = async () => { if (await confirmLeave()) close(); };
+      const okBtn = $('[data-ok]', mask);
+      okBtn.onclick = () => commit(okBtn, () => (isNew ? api.works.create(groupId, readForm()) : api.works.update(w.id, readForm())), isNew ? t('已创建') : t('已保存'));
       const pubBtn = mask.querySelector('[data-pub]');
-      if (pubBtn) pubBtn.onclick = async () => {
-        await api.works.update(w.id, { ...readForm(), status: 'published' });
-        if (O.group?.id === groupId) await reloadWorks();
-        close();
-        toast(t('已标记为已发布 🎉'));
-        if (O.group?.id === groupId) renderOpsTab();
-      };
+      if (pubBtn) pubBtn.onclick = () => commit(pubBtn, () => api.works.update(w.id, { ...readForm(), status: 'published' }), t('已标记为已发布 🎉'));
       const delBtn = mask.querySelector('[data-del]');
       if (delBtn) delBtn.onclick = async () => {
         if (await confirmModal(t('删除作品'), t('确定删除「{title}」吗？', { title: w.title }))) {
-          await api.works.remove(w.id);
-          if (O.group?.id === groupId) await reloadWorks();
-          close();
-          toast(t('已删除'));
-          if (O.group?.id === groupId) renderOpsTab();
+          commit(delBtn, () => api.works.remove(w.id), t('已删除'));
+        }
+      };
+      // AI 内容生成后：已有作品立即存档；新建作品标记未保存，关闭前确认
+      const afterGenerate = async (label) => {
+        $('#wk-content', mask).innerHTML = contentHTML(content);
+        mask.querySelectorAll('.copy-btn').forEach((b) => b.onclick = () => copyText(b.dataset.text));
+        if (isNew) { unsaved = true; return toast(t('{label}已生成，点"创建"保存', { label })); }
+        try {
+          await api.works.update(w.id, { content });
+          w.content = structuredClone(content);
+          toast(t('{label}已生成并保存', { label }));
+        } catch (e) {
+          unsaved = true;
+          toast(t('{label}已生成，但自动保存失败：', { label }) + e.message, 3500);
         }
       };
       // 复制按钮
@@ -477,9 +496,9 @@ export function openWork(work, presetDate = '', presetStatus = '') {
         const parts = [`【${w.title}】`];
         if (w.members) parts.push(`${t('出演：')}${w.members}`);
         if (w.publishAt) parts.push(`${t('发布日期：')}${w.publishAt}`);
-        if (w.content.copy) parts.push(`\n${t('文案：')}\n${w.content.copy}`);
-        if (w.content.script) {
-          const s = w.content.script;
+        if (content.copy) parts.push(`\n${t('文案：')}\n${content.copy}`);
+        if (content.script) {
+          const s = content.script;
           const shots = (s.shots || []).map((sh) => `${sh.no}. [${sh.scene}] ${sh.action}${sh.line ? '\n   ' + t('台词：') + sh.line : ''}${sh.caption ? '\n   ' + t('字幕：') + sh.caption : ''}`).join('\n');
           parts.push(`\n${t('分镜脚本（{duration}）：', { duration: s.duration || '' })}\n${shots}${s.endHook ? '\n' + t('结尾钩子：') + s.endHook : ''}${s.bgm ? '\n' + t('BGM建议：') + s.bgm : ''}${s.tips ? '\n' + t('拍摄提示：') + s.tips : ''}`);
         }
@@ -494,11 +513,9 @@ export function openWork(work, presetDate = '', presetStatus = '') {
           const d = group.data;
           const names = ($('#wk-members', mask).value || '').split(/[,，、]/).map((s) => s.trim()).filter(Boolean);
           const cast = d.members.filter((mm) => names.includes(mm.codename) || names.includes('全员') || !names.length);
-          const topic = w.content.topic || { title: $('#wk-title', mask).value, hook: w.content.hook || '', format: '30秒剧情', desc: '' };
-          w.content.script = await api.stage('videoScript', { concept: d.concept, castMembers: cast.length ? cast : d.members, topic, duration: '30秒' });
-          $('#wk-content', mask).innerHTML = contentHTML(w);
-          mask.querySelectorAll('.copy-btn').forEach((b) => b.onclick = () => copyText(b.dataset.text));
-          toast(t('脚本已生成，记得点"保存"'));
+          const topic = content.topic || { title: $('#wk-title', mask).value, hook: content.hook || '', format: '30秒剧情', desc: '' };
+          content.script = await api.stage('videoScript', { concept: d.concept, castMembers: cast.length ? cast : d.members, topic, duration: '30秒' });
+          await afterGenerate(t('脚本'));
         } catch (e) { toast(t('生成失败：') + e.message, 3000); }
         genScript.disabled = false;
         genScript.textContent = t('🎬 重新生成脚本');
@@ -515,12 +532,10 @@ export function openWork(work, presetDate = '', presetStatus = '') {
           const mi = d.members.indexOf(member);
           const r = await api.stage('postCopy', {
             member, daily: d.history?.[mi]?.dailyLife || '',
-            theme: $('#wk-title', mask).value || w.content.hook || '日常分享',
+            theme: $('#wk-title', mask).value || content.hook || '日常分享',
           });
-          w.content.copy = r.copy;
-          $('#wk-content', mask).innerHTML = contentHTML(w);
-          mask.querySelectorAll('.copy-btn').forEach((b) => b.onclick = () => copyText(b.dataset.text));
-          toast(t('文案已生成，记得点"保存"'));
+          content.copy = r.copy;
+          await afterGenerate(t('文案'));
         } catch (e) { toast(t('生成失败：') + e.message, 3000); }
         genCopy.disabled = false;
         genCopy.textContent = t('✍️ 重新生成文案');
@@ -528,15 +543,14 @@ export function openWork(work, presetDate = '', presetStatus = '') {
     } });
 }
 
-function aiButtonsHTML(w) {
+function aiButtonsHTML(type, content) {
   const btns = [];
-  if (w.type === 'short_video') btns.push(`<button class="btn btn-ghost" data-gen-script>${w.content.script ? t('🎬 重新生成脚本') : t('🎬 生成分镜脚本')}</button>`);
-  if (w.type === 'daily' || w.type === 'post') btns.push(`<button class="btn btn-ghost" data-gen-copy>${w.content.copy ? t('✍️ 重新生成文案') : t('✍️ 生成成员语气文案')}</button>`);
+  if (type === 'short_video') btns.push(`<button class="btn btn-ghost" data-gen-script>${content.script ? t('🎬 重新生成脚本') : t('🎬 生成分镜脚本')}</button>`);
+  if (type === 'daily' || type === 'post') btns.push(`<button class="btn btn-ghost" data-gen-copy>${content.copy ? t('✍️ 重新生成文案') : t('✍️ 生成成员语气文案')}</button>`);
   return btns.join('');
 }
 
-function contentHTML(w) {
-  const c = w.content || {};
+function contentHTML(c) {
   const parts = [];
   if (c.topic?.hook || c.hook) parts.push(`<p style="margin:4px 0"><b>${t('钩子：')}</b>${esc(c.topic?.hook || c.hook)}</p>`);
   if (c.topic?.desc) parts.push(`<p style="margin:4px 0"><b>${t('内容：')}</b>${esc(c.topic.desc)}</p>`);
@@ -625,7 +639,8 @@ function renderPlanResult(plan, groupId, closePlan) {
       });
     });
     if (!picked.length) return toast(t('没有勾选任何内容'));
-    await api.works.batch(groupId, picked);
+    try { await api.works.batch(groupId, picked); }
+    catch (e) { return toast(t('写入失败：') + e.message, 3500); }
     if (O.group?.id === groupId) await reloadWorks();
     toast(t('已写入 {n} 条排期', { n: picked.length }));
     closePlan?.();

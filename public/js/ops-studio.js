@@ -2,7 +2,7 @@
 // 状态策略：选题持久化到服务端 SQLite（按团+工坊存，换浏览器也不丢）；
 // 生成进行中切走标签，完成后若已回到本工坊自动刷新，否则 toast 提醒。
 import { api } from './api.js';
-import { $, esc, toast, copyText } from './ui.js';
+import { $, esc, toast, copyText, confirmModal } from './ui.js';
 import { t } from './i18n.js';
 
 const KIND_META = {
@@ -71,7 +71,12 @@ export function renderStudio(el, O, kind, openWork, reloadWorks) {
   </div>`;
 
   if (!busy) {
-    $('#st-gen', el).onclick = () => startGenerate(el, O, kind, openWork, reloadWorks);
+    $('#st-gen', el).onclick = async () => {
+      const savedTitles = new Set(O.works.map((w) => w.title));
+      const unsaved = (topics || []).filter((tp) => !savedTitles.has(tp.title)).length;
+      if (unsaved && !(await confirmModal(t('换一批选题'), t('还有 {n} 条选题没存入作品库，换一批后会被替换。确定继续？', { n: unsaved })))) return;
+      startGenerate(el, O, kind, openWork, reloadWorks);
+    };
     el.querySelectorAll('.angle-chip').forEach((b) => b.onclick = () => {
       O.angle[kind] = b.dataset.angle;
       el.querySelectorAll('.angle-chip').forEach((x) => x.classList.toggle('on', x === b));
