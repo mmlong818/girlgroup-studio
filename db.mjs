@@ -200,6 +200,7 @@ export const Images = {
       db.prepare('UPDATE images SET is_primary = 1 WHERE id = ?').run(id);
     });
   },
+  renameMember: (groupId, from, to) => db.prepare('UPDATE images SET member = ? WHERE group_id = ? AND member = ?').run(to, groupId, from),
   setArchived: (id, archived) => db.prepare('UPDATE images SET archived = ? WHERE id = ?').run(archived ? 1 : 0, id),
   delete: (id) => db.prepare('DELETE FROM images WHERE id = ?').run(id),
 };

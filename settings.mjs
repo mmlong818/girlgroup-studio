@@ -81,8 +81,11 @@ export function publicView() {
 export async function fetchRemoteModels({ kind, baseUrl, apiKey } = {}) {
   const saved = kind === 'image' ? getImage() : getText();
   const url = normalizeBaseUrl(baseUrl || saved.baseUrl);
-  const key = (typeof apiKey === 'string' && apiKey.trim() && !apiKey.includes('•')) ? apiKey.trim() : saved.apiKey;
-  if (!key) throw settingError('尚未配置 API Key，无法拉取模型列表');
+  const typedKey = (typeof apiKey === 'string' && apiKey.trim() && !apiKey.includes('•')) ? apiKey.trim() : '';
+  // 已保存的 Key 只发往它所属的服务地址，换了地址必须现填对应的 Key
+  const sameHost = saved.baseUrl && url === normalizeBaseUrl(saved.baseUrl);
+  const key = typedKey || (sameHost ? saved.apiKey : '');
+  if (!key) throw settingError(sameHost || !saved.apiKey ? '尚未配置 API Key，无法拉取模型列表' : '服务地址已更换，请填写该服务的 API Key 后再拉取');
 
   let res;
   try {

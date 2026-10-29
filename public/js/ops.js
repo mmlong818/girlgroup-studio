@@ -2,8 +2,7 @@
 import { api } from './api.js';
 import { $, $$, esc, toast, modal, confirmModal, copyText, segmented } from './ui.js';
 import { renderStudio } from './ops-studio.js';
-import { renderMemberStudioTab } from './member-studio.js';
-import { renderVisualTab } from './visual.js';
+import { renderVisualTab, focusVisualTarget } from './visual.js';
 import { openSettings } from './settings-ui.js';
 import { t } from './i18n.js';
 
@@ -29,14 +28,14 @@ const ICONS = {
   calendar: '<rect x="3" y="4.5" width="18" height="16" rx="2"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/>',
   daily: '<path d="M12 20h9"/><path d="M16.4 3.6a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
   video: '<rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="m10 9.2 5 2.8-5 2.8Z"/>',
-  studio: '<rect x="3" y="3" width="18" height="18" rx="2.5"/><circle cx="8.5" cy="8.5" r="1.8"/><path d="m20.5 14.5-4.5-4.5L5 21"/>',
+  visual: '<rect x="3" y="3" width="18" height="18" rx="2.5"/><circle cx="8.5" cy="8.5" r="1.8"/><path d="m20.5 14.5-4.5-4.5L5 21"/>',
   works: '<rect x="3" y="3.5" width="18" height="4.5" rx="1.2"/><path d="M5 8v11.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8"/><path d="M9.8 12.2h4.4"/>',
 };
 const icon = (k) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${ICONS[k] || ''}</svg>`;
 
 const fmtDate = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-const VALID_TABS = ['overview', 'calendar', 'daily', 'video', 'studio', 'visual', 'works'];
+const VALID_TABS = ['overview', 'calendar', 'daily', 'video', 'visual', 'works'];
 
 export async function renderOps(app, groupId, initialTab, isCurrent = () => true) {
   if (O.group?.id !== groupId) { O.topics = {}; O.generating = {}; O.hints = {}; }
@@ -52,13 +51,16 @@ export async function renderOps(app, groupId, initialTab, isCurrent = () => true
     app.innerHTML = `<div class="empty-state">${t('加载失败：')}${esc(e.message)}</div>`;
     return;
   }
-  O.tab = VALID_TABS.includes(initialTab) ? initialTab : 'overview';
+  // 「形象生成」已并入视觉车间，旧链接自动跳转
+  const tab = initialTab === 'studio' ? 'visual' : initialTab;
+  O.tab = VALID_TABS.includes(tab) ? tab : 'overview';
+  focusVisualTarget(new URLSearchParams(location.hash.split('?')[1] || '').get('member'));
   O.month = new Date();
   const c = O.group.data.concept;
   // 导航按流水线分组：指挥台 → 创作 → 归档（带步骤编号，左栏即动线）
   const NAV_GROUPS = [
     ['01', t('指挥台'), [['overview', t('总览')], ['calendar', t('发布日历')]]],
-    ['02', t('创作'), [['daily', t('日常内容')], ['video', t('短视频')], ['studio', t('形象生成')], ['visual', t('视觉车间')]]],
+    ['02', t('创作'), [['daily', t('日常内容')], ['video', t('短视频')], ['visual', t('视觉车间')]]],
     ['03', t('归档'), [['works', t('作品库')]]],
   ];
   document.body.classList.add('ws-mode');
@@ -116,12 +118,8 @@ function renderOpsTab() {
   if (O.tab === 'calendar') return renderCalendar(el);
   if (O.tab === 'works') return renderWorksLib(el);
   if (O.tab === 'video' || O.tab === 'daily') return renderStudio(el, O, O.tab, openWork, reloadWorks);
-  if (O.tab === 'studio') return renderMemberStudioTab(el, O.group);
   if (O.tab === 'visual') {
-    return renderVisualTab(el, O.group, async () => {
-      O.group = await api.groups.get(O.group.id);
-      renderOpsTab();
-    });
+    return renderVisualTab(el, O.group, (group) => { if (O.group?.id === group.id) O.group = group; });
   }
 }
 

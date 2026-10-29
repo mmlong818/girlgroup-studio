@@ -1,9 +1,6 @@
 // 企划工作台 — 浏览 / 编辑 / 重roll / 导出
 import { api, mapLimit } from './api.js';
 import { $, $$, esc, toast, modal, confirmModal, copyText, download, getPath, setPath, lightbox } from './ui.js';
-import { memberPresets } from './style-presets.js';
-import { renderVisualTab } from './visual.js';
-import { appConfig } from './main.js';
 import { buildMarkdown } from './markdown.js';
 import { showGroupCard } from './card.js';
 import { openRename } from './rename.js';
@@ -40,10 +37,13 @@ async function togglePending(key) {
 
 const TABS = [
   ['people', t('人物设定')],
-  ['visual', t('视觉车间')],
   ['world', t('世界观')],
   ['story', t('故事宇宙')],
+  ['plan', t('运营方案')],
 ];
+
+// 视觉车间统一在运营中心；member 可直接定位到某位成员
+const visualHref = (member = '') => `#/ops/${G.id}?tab=visual${member ? `&member=${encodeURIComponent(member)}` : ''}`;
 
 export async function renderWorkspace(app, id, initialTab = 'people', isCurrent = () => true) {
   app.innerHTML = `<div class="empty-state"><div class="big">⏳</div>${t('加载中…')}</div>`;
@@ -57,6 +57,7 @@ export async function renderWorkspace(app, id, initialTab = 'people', isCurrent 
     $('#workspace-back').onclick = () => { location.hash = ''; };
     return;
   }
+  if (initialTab === 'visual') { location.hash = visualHref(); return; }
   currentTab = TABS.find(([k]) => k === initialTab) ? initialTab : 'people';
   if (activeMember >= (G.data.members?.length || 0)) activeMember = 0;
   const c = G.data.concept;
@@ -73,7 +74,7 @@ export async function renderWorkspace(app, id, initialTab = 'people', isCurrent 
 
   renderSidebar();
   $('#ws-tabs').addEventListener('click', (e) => {
-    const btn = e.target.closest('.tab');
+    const btn = e.target.closest('.tab[data-tab]');
     if (!btn) return;
     currentTab = btn.dataset.tab;
     renderTab();
@@ -238,7 +239,6 @@ function renameField(btn) {
       // 同步骨架里的艺名，保持全局一致
       const m = path.match(/^members\.(\d+)\.codename$/);
       if (m && group.data.concept.members[m[1]]) group.data.concept.members[m[1]].codename = name;
-      if (G === group && path === 'concept.name') $('.ws-banner h1').textContent = name;
       await save(group);
       toast(t('已更名'));
       if (G === group) renderTab();
@@ -378,7 +378,9 @@ async function regenModule(moduleKey) {
     $('#tab-content').innerHTML = `<div class="card" style="text-align:center;padding:60px"><div class="spinner" style="width:34px;height:34px;border-width:4px;margin:0 auto 18px"></div><h2>${t('正在重构总设定…')}</h2></div>`;
     try {
       const backup = d.concept.members;
-      const result = await api.stage('concept', { input: d.input, chosen: { name: d.concept.name, concept: d.concept.concept, vibe: d.concept.vibe }, feedback });
+      const c = d.concept;
+      const chosen = { name: c.name, concept: c.concept, worldHint: c.worldview || '', vibe: c.vibe || '', mainColor: c.mainColor || '', twist: c.originReason || '' };
+      const result = await api.stage('concept', { ...d.input, chosen, feedback });
       Object.assign(d.concept, result);
       d.concept.members = backup;
       await save(group); toast(t('总设定已重构'));
@@ -389,13 +391,21 @@ async function regenModule(moduleKey) {
 
   const names = { relations: t('关系网络'), story: t('故事线'), operations: t('运营方案') };
   if (!(await confirmModal(t('重新生成{name}', { name: names[moduleKey] }), t('将基于当前的团队概念和成员设定，重新创作整个{name}模块，原内容会被替换。', { name: names[moduleKey] })))) return;
-  const el = $('#tab-content');
-  el.innerHTML = `<div class="card" style="text-align:center;padding:60px"><div class="spinner" style="width:34px;height:34px;border-width:4px;margin:0 auto 18px"></div><h2>${t('正在重新创作{name}…', { name: names[moduleKey] })}</h2></div>`;
+  if (G !== group) return;
+  await generateModule(moduleKey, t('正在重新创作{name}…', { name: names[moduleKey] }));
+}
+
+// 生成 / 重做 关系、故事线、运营方案（单人偶像没有关系网络，用空结构兜底）
+async function generateModule(moduleKey, title) {
+  const group = G;
+  const d = group.data;
+  const relations = d.relations || { overview: '', pairs: [] };
+  $('#tab-content').innerHTML = `<div class="card" style="text-align:center;padding:60px"><div class="spinner" style="width:34px;height:34px;border-width:4px;margin:0 auto 18px"></div><h2>${esc(title)}</h2><p class="muted">${t('约 1-2 分钟')}</p></div>`;
   try {
     const payloads = {
       relations: { concept: d.concept, members: d.members },
-      story: { concept: d.concept, members: d.members, relations: d.relations },
-      operations: { concept: d.concept, members: d.members, relations: d.relations, story: d.story, positioning: d.input?.positioning, audience: d.input?.audience },
+      story: { concept: d.concept, members: d.members, relations },
+      operations: { concept: d.concept, members: d.members, relations, story: d.story || null, positioning: d.input?.positioning, audience: d.input?.audience },
     };
     d[moduleKey] = await api.stage(moduleKey, payloads[moduleKey]);
     await save(group); toast(t('已更新'));
@@ -407,8 +417,8 @@ async function regenModule(moduleKey) {
 function renderTabNav() {
   const nav = $('#ws-tabs-main');
   if (!nav) return;
-  nav.innerHTML = TABS.filter(([k]) => k !== 'story' || G.data.story)
-    .map(([k, label]) => `<button class="tab ${k === currentTab ? 'active' : ''}" data-tab="${k}">${label}</button>`).join('');
+  nav.innerHTML = TABS.map(([k, label]) => `<button class="tab ${k === currentTab ? 'active' : ''}" data-tab="${k}">${label}</button>`).join('')
+    + `<a class="tab" href="${esc(visualHref())}">${t('视觉车间')} ↗</a>`;
 }
 
 // ── 各标签页渲染 ──
@@ -421,12 +431,12 @@ function renderTab() {
 
   if (currentTab === 'people') {
     renderMemberCards(el, d.members[activeMember], activeMember);
-  } else if (currentTab === 'visual') {
-    renderVisualTab(el, G, async () => { G = await api.groups.get(G.id); renderTab(); });
   } else if (currentTab === 'world') {
     renderWorldTab(el, d);
+  } else if (currentTab === 'plan') {
+    renderPlanTab(el, d);
   } else if (currentTab === 'story') {
-    if (!d.story) { el.innerHTML = `<div class="card"><p class="muted">${t('暂无故事线。')}</p></div>`; return; }
+    if (!d.story) return renderEmptyModule(el, 'story');
     const s = d.story;
     el.innerHTML = `<div class="card${isPending('story') ? ' node-pending' : ''}">
       ${nodeHead(t('故事前提'), 'story', { regen: 'story' })}
@@ -527,7 +537,6 @@ function renderMemberCards(el, m, i) {
 
   const imgs = G.images.filter((x) => x.member === m.codename && !x.archived);
   const primary = imgs.find((x) => x.isPrimary) || imgs[0];
-  const genOK = appConfig.imageGen;
 
   el.innerHTML = `<div class="mc" style="--mc:${esc(m.color)}">
     <div class="mc-top">
@@ -537,7 +546,7 @@ function renderMemberCards(el, m, i) {
         </div>
         <div class="mc-photo-bar">
           <button class="btn btn-sm" id="mc-upload">↑ ${t('上传')}</button>
-          <button class="btn btn-sm" id="mc-gen" ${genOK ? '' : 'disabled'}>✦ ${t('生成形象')}</button>
+          <a class="btn btn-sm" href="${esc(visualHref(m.codename))}" title="${t('在视觉车间为TA生成形象')}">✦ ${t('生成形象')} ↗</a>
           ${!locked ? `<button class="btn btn-sm" data-regen="${esc(mKey)}" title="${t('重构人设')}">🔄 ${t('重构')}</button>` : ''}
           <span class="mc-bar-sp"></span>
           <button class="btn btn-sm" data-lock="${esc(mKey)}">${locked ? '🔓' : '🔒'}</button>
@@ -546,7 +555,7 @@ function renderMemberCards(el, m, i) {
         ${imgs.length > 1 ? `<div class="mc-gallery">${imgs.map((im) => `<div class="mc-thumb${im.isPrimary ? ' on' : ''}" data-img="${esc(im.id)}" data-url="${esc(im.url)}">
           <img src="${esc(im.url)}" loading="lazy" alt="">
           ${im.isPrimary ? `<span class="mc-thumb-tag">${t('主图')}</span>` : `<button class="mc-thumb-set" data-primary>${t('设为主图')}</button>`}
-          <button class="mc-thumb-del" data-del title="${t('归档')}">×</button>
+          ${im.isPrimary ? '' : `<button class="mc-thumb-del" data-del title="${t('归档')}">×</button>`}
         </div>`).join('')}</div>` : ''}
       </div>
       <div class="card mc-id">
@@ -600,8 +609,6 @@ function renderMemberCards(el, m, i) {
     const updated = await api.groups.get(group.id);
     if (G === group) { G = updated; renderTab(); }
   };
-  // 快速生成 = 创作间「基础立绘」同款提示词（锁定/自由骨架 + 画风锁定 + 参考图跟随）
-  const genPrompt = memberPresets(m, group)[0].prompt;
   const upBtn = el.querySelector('#mc-upload');
   if (upBtn) upBtn.onclick = () => {
     const inp = document.createElement('input');
@@ -610,36 +617,18 @@ function renderMemberCards(el, m, i) {
       const f = inp.files[0]; if (!f) return;
       if (f.size > 15 * 1024 * 1024) return toast(t('图片超过 15MB'));
       const rd = new FileReader();
-      rd.onload = async () => { try { const img = await api.images.upload(group.id, m.codename, rd.result); if (!primary) await api.images.setPrimary(img.id); toast(t('已上传')); await reload(); } catch (e) { toast(t('上传失败：') + e.message, 3000); } };
+      rd.onload = async () => { try { await api.images.upload(group.id, m.codename, rd.result); toast(t('已上传')); await reload(); } catch (e) { toast(t('上传失败：') + e.message, 3000); } };
       rd.readAsDataURL(f);
     };
     inp.click();
   };
-  const genBtn = el.querySelector('#mc-gen');
-  // 先弹窗展示自动生成的提示词，确认/修改后再生成
-  if (genBtn) genBtn.onclick = () => {
-    modal(`<h3>✦ ${t('生成形象')} · ${esc(m.codename)}</h3>
-      <p class="sub" style="margin-bottom:10px">${t('已按角色设定自动生成提示词，可修改后再生成')}</p>
-      <div class="ms-prompt-box"><textarea id="mcg-prompt" rows="8">${esc(genPrompt)}</textarea></div>
-      <div class="m-foot">
-        <button class="btn btn-ghost" data-x>${t('取消')}</button>
-        <button class="btn btn-primary" data-ok>✦ ${t('AI 生成')}</button>
-      </div>`, { onMount: (mask, close) => {
-      $('[data-x]', mask).onclick = close;
-      $('[data-ok]', mask).onclick = async () => {
-        const prompt = $('#mcg-prompt', mask).value.trim() || genPrompt;
-        close();
-        genBtn.disabled = true; genBtn.innerHTML = `<span class="spinner"></span> ${t('生成中…')}`;
-        try { const img = await api.images.generate(group.id, m.codename, prompt, '1024x1536', 'medium'); if (!primary) await api.images.setPrimary(img.id); toast(t('已生成')); await reload(); }
-        catch (e) { toast(t('生成失败：') + e.message, 4000); genBtn.disabled = false; genBtn.textContent = '✦ ' + t('生成形象'); }
-      };
-    } });
-  };
   if (primary) el.querySelector('.mc-photo-main img')?.addEventListener('click', () => lightbox(primary.url));
   el.querySelector('.mc-gallery')?.addEventListener('click', async (e) => {
     const th = e.target.closest('.mc-thumb'); if (!th) return;
-    if (e.target.closest('[data-primary]')) { await api.images.setPrimary(th.dataset.img); toast(t('已设为主图')); return reload(); }
-    if (e.target.closest('[data-del]')) { await api.images.archive(th.dataset.img, true); toast(t('已归档，可在创作间或视觉车间的归档区恢复或删除')); return reload(); }
+    try {
+      if (e.target.closest('[data-primary]')) { await api.images.setPrimary(th.dataset.img); toast(t('已设为主图')); return reload(); }
+      if (e.target.closest('[data-del]')) { await api.images.archive(th.dataset.img, true); toast(t('已归档，可在视觉车间的归档区恢复或删除')); return reload(); }
+    } catch (err) { return toast(t('操作失败：') + err.message, 3000); }
     lightbox(th.dataset.url);
   });
 }
@@ -772,25 +761,44 @@ async function generateHistory(onlyIndex = null) {
   if (G === group) renderTab();
 }
 
-async function generateOperations() {
-  const group = G;
-  const el = $('#tab-content');
-  const d = group.data;
-  el.innerHTML = `<div class="card" style="text-align:center;padding:50px"><div class="spinner" style="width:30px;height:30px;border-width:4px;margin:0 auto 14px"></div>
-    <h2>${t('正在制定运营方案…')}</h2><p class="muted">${t('约 1-2 分钟')}</p></div>`;
-  try {
-    d.operations = await api.stage('operations', {
-      concept: d.concept, members: d.members,
-      relations: d.relations || { overview: '', pairs: [] },
-      story: d.story || null,
-      positioning: d.input?.positioning, audience: d.input?.audience,
-    });
-    await save(group);
-    toast(t('运营方案已生成'));
-  } catch (e) {
-    toast(t('生成失败：') + e.message, 3500);
-  }
-  if (G === group) renderTab();
+// 故事线 / 运营方案尚未生成时的引导
+function renderEmptyModule(el, key) {
+  const info = {
+    story: { en: 'STORY', title: t('故事宇宙'), desc: t('基于团队概念、成员秘密和关系，生成可连载的故事主线、成员个人线和第一季剧情。') },
+    operations: { en: 'OPERATIONS PLAN', title: t('运营方案'), desc: t('生成首支单曲、直播与短视频栏目、海报创意和周边方向——AI 排期和团体海报都会用到它。') },
+  }[key];
+  el.innerHTML = `<div class="card" style="text-align:center;padding:48px 26px">
+    <div class="en-label">${info.en}</div>
+    <h2>${info.title}</h2>
+    <p class="sub" style="max-width:520px;margin:8px auto 22px">${info.desc}</p>
+    <button class="btn btn-primary btn-big" id="btn-gen-module">✦ ${t('生成{name}', { name: info.title })}</button>
+  </div>`;
+  $('#btn-gen-module').onclick = () => generateModule(key, t('正在生成{name}…', { name: info.title }));
+}
+
+// ── 运营方案 Tab ──
+function renderPlanTab(el, d) {
+  const o = d.operations;
+  if (!o) return renderEmptyModule(el, 'operations');
+  const items = (key, label) => (o[key] || []).map((x, i) => fRow(x.name || `${label} ${i + 1}`, `operations.${key}.${i}.${x.format !== undefined ? 'format' : 'desc'}`)).join('');
+  el.innerHTML = `<div class="card${isPending('operations') ? ' node-pending' : ''}">
+      ${nodeHead(t('首支单曲'), 'operations', { regen: 'operations' })}
+      <dl>${fRow(t('单曲名'), 'operations.debutSingle.title')}${fRow(t('歌曲概念'), 'operations.debutSingle.concept')}${fRow(t('MV 概念'), 'operations.debutSingle.mvConcept')}</dl>
+    </div>
+    <div class="cols-2">
+      <div class="card"><h3 style="margin-top:0">${t('直播栏目')}</h3><dl>${items('liveShows', t('直播栏目'))}</dl></div>
+      <div class="card"><h3 style="margin-top:0">${t('短视频栏目')}</h3><dl>${items('shortVideoColumns', t('短视频栏目'))}</dl></div>
+    </div>
+    <div class="cols-2">
+      <div class="card"><h3 style="margin-top:0">${t('海报创意')}</h3><dl>${items('posterIdeas', t('海报创意'))}</dl></div>
+      <div class="card"><h3 style="margin-top:0">${t('周边')}</h3><dl>${items('merch', t('周边'))}</dl></div>
+    </div>
+    <div class="card"><dl>
+      ${(o.memberAccounts || []).map((a, i) => fRow(t('{name} 个人号', { name: a.codename }), `operations.memberAccounts.${i}.style`)).join('')}
+      ${fRow(t('粉丝互动'), 'operations.fanInteraction')}${fRow(t('表情包方向'), 'operations.memeDirection')}
+      ${fRow(t('剧情短片'), 'operations.dramaShorts')}${fRow(t('舞台演出'), 'operations.stageShow')}${fRow(t('节日活动'), 'operations.festivalIdeas')}
+      ${fRow(t('商业文案'), 'operations.pitchCopy')}${fRow(t('对外介绍'), 'operations.productDescription')}
+    </dl></div>`;
 }
 
 async function setProgress(key, val) {

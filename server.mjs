@@ -247,6 +247,25 @@ async function restoreBackup(backup) {
   }
 }
 
+// 模型改写后丢失的锁定片段补回提示词开头，保证角色 / 画风一致性
+export function enforceLocks(prompt, locks) {
+  if (!Array.isArray(locks)) return prompt;
+  const missing = locks.filter((l) => typeof l === 'string' && l.trim() && !prompt.includes(l.trim()));
+  return missing.length ? `${missing.map((l) => l.trim()).join(' ')} ${prompt}` : prompt;
+}
+
+// 改艺名后同步图片归属（图片表以艺名关联成员）
+function syncMemberRenames(groupId, oldData, newData) {
+  const before = oldData?.members || [];
+  const after = newData?.members || [];
+  if (before.length !== after.length) return;
+  before.forEach((m, i) => {
+    const from = m?.codename;
+    const to = after[i]?.codename;
+    if (from && to && from !== to) Images.renameMember(groupId, from, to);
+  });
+}
+
 async function handleAPI(req, res, urlPath) {
   const seg = urlPath.split('/').filter(Boolean); // ['api', ...]
   const body = req.method === 'GET' || req.method === 'DELETE'
@@ -264,11 +283,13 @@ async function handleAPI(req, res, urlPath) {
       en: 'English',
       ja: '日本語',
     };
-    const system = CONTENT_LANG[request.lang]
+    // 生图提示词需原样保留锁定片段，不受界面语言影响
+    const system = CONTENT_LANG[request.lang] && request.stage !== 'imagePrompt'
       ? `${stage.system}\n\n【输出语言】JSON 的所有文本字段值必须使用${CONTENT_LANG[request.lang]}书写；JSON 键名保持不变。`
       : stage.system;
-    const result = await runJSON(system, stage.buildUser(request.payload), { model: stage.model });
-    return ok(res, { result: validateStageResult(request.stage, result) });
+    const result = validateStageResult(request.stage, await runJSON(system, stage.buildUser(request.payload), { model: stage.model }));
+    if (request.stage === 'imagePrompt') result.prompt = enforceLocks(result.prompt, request.payload.locks);
+    return ok(res, { result });
   }
 
   // ── 企划 CRUD ──
@@ -296,6 +317,7 @@ async function handleAPI(req, res, urlPath) {
     if (req.method === 'PATCH') {
       const data = validateGroupData(body.data ?? JSON.parse(row.data));
       const name = data.concept.name;
+      syncMemberRenames(row.id, JSON.parse(row.data), data);
       Groups.update(row.id, data, name);
       return ok(res, { group: groupFull(Groups.byId(row.id)) });
     }
@@ -348,7 +370,9 @@ async function handleAPI(req, res, urlPath) {
   if (seg[1] === 'public' && seg[2] && req.method === 'GET') {
     const row = Groups.byShareId(seg[2]);
     if (!row || !row.is_public) return fail(res, 404, '页面不存在或未公开');
-    return ok(res, { group: groupFull(row) });
+    const group = groupFull(row);
+    group.images = group.images.filter((i) => !i.archived);
+    return ok(res, { group });
   }
 
   // ── 图片 ──

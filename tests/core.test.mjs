@@ -220,3 +220,50 @@ test('HTTP 安全边界与 SQLite CRUD', async (t) => {
     assert.equal(res.status, 400);
   });
 });
+
+test('生图提示词丢失的锁定片段会被补回', async () => {
+  const { enforceLocks } = await import('../server.mjs');
+  const lock = '[CHARACTER LOCK — silver hair]';
+  assert.equal(enforceLocks(`a girl ${lock} on stage`, [lock]), `a girl ${lock} on stage`);
+  assert.equal(enforceLocks('a girl on stage', [lock, '']), `${lock} a girl on stage`);
+  assert.equal(enforceLocks('a girl', undefined), 'a girl');
+});
+
+test('换了服务地址不会把已保存的 Key 发出去', async () => {
+  await assert.rejects(
+    () => settings.fetchRemoteModels({ kind: 'text', baseUrl: 'https://other-provider.example/v1' }),
+    (err) => /服务地址已更换/.test(err.message),
+  );
+});
+
+test('图片归档、改艺名同步与公开页过滤', async (t) => {
+  const headers = { Host: `127.0.0.1:${port}`, 'Content-Type': 'application/json' };
+  const post = (url, body) => request('POST', url, { headers, body: JSON.stringify(body) });
+  const data = {
+    concept: { name: '归档测试', members: [{ codename: '星', archetype: '队长', color: '#123456' }] },
+    members: [{ codename: '星' }],
+  };
+  const group = (await post('/api/groups', { data })).json.group;
+  const first = (await post('/api/images/upload', { groupId: group.id, member: '星', dataUrl: TINY_PNG })).json.image;
+  const second = (await post('/api/images/upload', { groupId: group.id, member: '星', dataUrl: TINY_PNG })).json.image;
+
+  await t.test('主图不能归档，未归档不能删除', async () => {
+    assert.equal(first.isPrimary, true);
+    assert.equal((await post(`/api/images/${first.id}/archive`, { archived: true })).status, 400);
+    assert.equal((await request('DELETE', `/api/images/${second.id}`, { headers })).status, 400);
+  });
+
+  await t.test('归档图不出现在公开页', async () => {
+    assert.equal((await post(`/api/images/${second.id}/archive`, { archived: true })).status, 200);
+    const pub = await request('GET', `/api/public/${group.shareId}`, { headers });
+    assert.equal(pub.status, 200);
+    assert.deepEqual(pub.json.group.images.map((i) => i.id), [first.id]);
+  });
+
+  await t.test('改艺名后图片跟随成员', async () => {
+    const renamed = { ...data, concept: { ...data.concept, members: [{ ...data.concept.members[0], codename: '月' }] }, members: [{ codename: '月' }] };
+    const res = await request('PATCH', `/api/groups/${group.id}`, { headers, body: JSON.stringify({ data: renamed }) });
+    assert.equal(res.status, 200);
+    assert.ok(res.json.group.images.every((i) => i.member === '月'));
+  });
+});
