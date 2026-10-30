@@ -260,6 +260,17 @@ test('图片归档、改艺名同步与公开页过滤', async (t) => {
     assert.deepEqual(pub.json.group.images.map((i) => i.id), [first.id]);
   });
 
+  await t.test('关闭公开后出道页不可访问，再打开恢复', async () => {
+    assert.equal((await post(`/api/groups/${group.id}/public`, { isPublic: 'no' })).status, 400);
+    const off = await post(`/api/groups/${group.id}/public`, { isPublic: false });
+    assert.equal(off.json.group.isPublic, false);
+    assert.equal((await request('GET', `/api/public/${group.shareId}`, { headers })).status, 404);
+    const backup = (await request('GET', `/api/groups/${group.id}/export`, { headers })).json.backup;
+    assert.equal(backup.group.isPublic, false);
+    await post(`/api/groups/${group.id}/public`, { isPublic: true });
+    assert.equal((await request('GET', `/api/public/${group.shareId}`, { headers })).status, 200);
+  });
+
   await t.test('改艺名后图片跟随成员', async () => {
     const renamed = { ...data, concept: { ...data.concept, members: [{ ...data.concept.members[0], codename: '月' }] }, members: [{ codename: '月' }] };
     const res = await request('PATCH', `/api/groups/${group.id}`, { headers, body: JSON.stringify({ data: renamed }) });

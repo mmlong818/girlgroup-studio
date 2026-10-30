@@ -214,7 +214,7 @@ async function buildBackup(row) {
     format: 'starform-group-backup',
     version: 1,
     exportedAt: new Date().toISOString(),
-    group: { name: row.name, data: JSON.parse(row.data) },
+    group: { name: row.name, isPublic: Boolean(row.is_public), data: JSON.parse(row.data) },
     works: Works.listByGroup(row.id).map(backupWork),
     studio: Studio.getAll(row.id),
     images,
@@ -237,6 +237,7 @@ async function restoreBackup(backup) {
       if (source.archived && !source.isPrimary) Images.setArchived(image.id, true);
     }
     primaryIds.forEach((id) => Images.setPrimary(id));
+    if (backup.group.isPublic === false) Groups.setPublic(row.id, false);
     return Groups.byId(row.id);
   } catch (err) {
     Groups.delete(row.id);
@@ -304,6 +305,14 @@ async function handleAPI(req, res, urlPath) {
   if (urlPath === '/api/import' && req.method === 'POST') {
     const backup = validateBackup(body.backup);
     return ok(res, { group: groupFull(await restoreBackup(backup)) });
+  }
+  // 出道页公开开关
+  if (seg[1] === 'groups' && seg[2] && seg[3] === 'public' && req.method === 'POST') {
+    if (typeof body.isPublic !== 'boolean') return fail(res, 400, 'isPublic 必须是布尔值');
+    const row = Groups.byId(seg[2]);
+    if (!row) return fail(res, 404, '企划不存在');
+    Groups.setPublic(row.id, body.isPublic);
+    return ok(res, { group: groupFull(Groups.byId(row.id)) });
   }
   if (seg[1] === 'groups' && seg[2] && seg[3] === 'export' && req.method === 'GET') {
     const row = Groups.byId(seg[2]);

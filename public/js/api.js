@@ -26,6 +26,7 @@ export const api = {
     create: (data) => req('POST', '/api/groups', { data }).then((d) => d.group),
     update: (id, data, name) => req('PATCH', `/api/groups/${id}`, { data, name }).then((d) => d.group),
     remove: (id) => req('DELETE', `/api/groups/${id}`),
+    setPublic: (id, isPublic) => req('POST', `/api/groups/${id}/public`, { isPublic }).then((d) => d.group),
   },
   backups: {
     get: (id) => req('GET', `/api/groups/${id}/export`).then((d) => d.backup),

@@ -1821,3 +1821,10 @@ details[open] > .prompts-summary::before { transform: rotate(90deg); }
   .cal-cell { min-height: 64px; padding: 4px; }
   .cal-chip { font-size: 11px; }
 }
+
+/* 分享菜单：出道页公开开关 */
+.share-public { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; margin-bottom: 10px; border: 1px solid var(--hairline); border-radius: var(--r-s); cursor: pointer; }
+.share-public input { margin-top: 3px; accent-color: var(--accent); }
+.share-public span { display: flex; flex-direction: column; gap: 2px; }
+.share-public small { font-size: 12px; }
+.share-note { font-size: 12px; margin: 0 0 12px; }

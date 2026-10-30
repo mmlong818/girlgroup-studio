@@ -748,4 +748,13 @@ export const EN = {
   "总述": "Overview",
   "标志互动": "Signature Moments",
   "搞笑搭档 · {pair}": "Comedy Duo · {pair}",
+  "出道页未公开，可在「分享 / 导出」里打开": "Debut page is private. Turn it on under Share / Export.",
+  "未公开": "Private",
+  "出道页对外公开": "Make debut page public",
+  "关闭后，任何人（包括持有链接的人）都打不开出道页": "When off, nobody can open the debut page, even with the link",
+  "当前是本机地址，链接只在这台电脑上能打开；要给别人看，需要把工坊部署到对方能访问的地址。": "This is a local address, so the link only opens on this computer. To share it, deploy the studio somewhere others can reach.",
+  "出道页未公开，请先打开上方的公开开关": "The debut page is private. Turn on the public switch above first.",
+  "出道页已公开": "Debut page is now public",
+  "出道页已设为不公开": "Debut page is now private",
+  "设置失败：": "Failed to update: ",
 };

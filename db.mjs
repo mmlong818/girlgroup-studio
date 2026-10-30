@@ -113,6 +113,7 @@ export const Groups = {
     return this.byId(id);
   },
   byId: (id) => db.prepare('SELECT * FROM groups WHERE id = ?').get(id),
+  setPublic: (id, isPublic) => db.prepare('UPDATE groups SET is_public = ? WHERE id = ?').run(isPublic ? 1 : 0, id),
   byShareId: (sid) => db.prepare('SELECT * FROM groups WHERE share_id = ?').get(sid),
   list: () => db.prepare('SELECT * FROM groups ORDER BY updated_at DESC').all(),
   update(id, data, name) {

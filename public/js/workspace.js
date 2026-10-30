@@ -111,7 +111,7 @@ function renderSidebar() {
       }).join('')}
     </nav>
     <div class="side-foot">
-      <a class="btn side-primary" href="/g/${esc(G.shareId)}" target="_blank">${t('出道页')} ↗</a>
+      <a class="btn side-primary" href="/g/${esc(G.shareId)}" target="_blank" title="${G.isPublic ? '' : t('出道页未公开，可在「分享 / 导出」里打开')}">${t('出道页')}${G.isPublic ? '' : ` · ${t('未公开')}`} ↗</a>
       <button class="btn side-btn" id="side-share">${t('分享 / 导出')} ▾</button>
       <a class="btn side-ops" href="#/ops/${esc(G.id)}">${t('运营中心')} →</a>
     </div>`;
@@ -126,7 +126,13 @@ function renderSidebar() {
 
 function openShareMenu() {
   const group = G;
+  const isLocal = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
   const close = modal(`<h3>${t('分享 / 导出')}</h3>
+    <label class="share-public">
+      <input type="checkbox" id="share-public" ${group.isPublic ? 'checked' : ''}>
+      <span><b>${t('出道页对外公开')}</b><small class="muted">${t('关闭后，任何人（包括持有链接的人）都打不开出道页')}</small></span>
+    </label>
+    ${isLocal ? `<p class="muted share-note">${t('当前是本机地址，链接只在这台电脑上能打开；要给别人看，需要把工坊部署到对方能访问的地址。')}</p>` : ''}
     <div class="share-menu">
       <button class="btn btn-ghost" data-s="link">🔗 ${t('复制对外链接')}</button>
       <button class="btn btn-ghost" data-s="card">🪪 ${t('生成成团卡')}</button>
@@ -136,7 +142,10 @@ function openShareMenu() {
     <div class="m-foot" style="justify-content:flex-start"><button class="btn btn-danger btn-sm" data-del-group>${t('删除企划')}</button></div>`, {
     onMount: (mask) => {
       const act = {
-        link: () => copyText(`${location.origin}/g/${group.shareId}`),
+        link: () => {
+          if (!group.isPublic) { toast(t('出道页未公开，请先打开上方的公开开关'), 3000); return false; }
+          copyText(`${location.origin}/g/${group.shareId}`);
+        },
         card: () => showGroupCard(group),
         md: () => download(t('{name}-企划书.md', { name: group.data.concept.name }), buildMarkdown(group.data), 'text/markdown;charset=utf-8'),
         json: async () => {
@@ -146,9 +155,26 @@ function openShareMenu() {
       };
       mask.querySelectorAll('[data-s]').forEach((b) => b.onclick = async () => {
         b.disabled = true;
-        try { await act[b.dataset.s](); close(); }
+        try {
+          if ((await act[b.dataset.s]()) !== false) return close();
+          b.disabled = false;
+        }
         catch (err) { toast(t('导出失败：') + err.message, 3500); b.disabled = false; }
       });
+      const pubBox = mask.querySelector('#share-public');
+      pubBox.onchange = async () => {
+        pubBox.disabled = true;
+        try {
+          const updated = await api.groups.setPublic(group.id, pubBox.checked);
+          group.isPublic = updated.isPublic;
+          toast(group.isPublic ? t('出道页已公开') : t('出道页已设为不公开'));
+          if (G === group) renderSidebar();
+        } catch (err) {
+          pubBox.checked = group.isPublic;
+          toast(t('设置失败：') + err.message, 3500);
+        }
+        pubBox.disabled = false;
+      };
       mask.querySelector('[data-del-group]').onclick = async () => {
         close();
         const name = group.data.concept.name;
