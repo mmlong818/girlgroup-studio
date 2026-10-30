@@ -11,7 +11,7 @@ const KIND_LABELS = { gen: '常用造型', upload: '上传' };
 CATS.forEach((c) => { KIND_LABELS[c.id] = c.label; });
 
 // 当前视图状态；G 始终指向本车间持有的最新企划对象
-const V = { G: null, el: null, onChange: null, target: POSTER, cat: 'look', filter: '' };
+const V = { G: null, el: null, onChange: null, target: POSTER, cat: 'look', filter: '', recipe: null };
 
 // 设定下一次进入车间时选中的对象（工作台「去视觉车间」跳转用）
 export function focusVisualTarget(codename) {
@@ -285,6 +285,37 @@ function renderPanel() {
   renderRefs();
   renderQueue();
   renderGallery();
+
+  if (V.recipe) {
+    const r = V.recipe;
+    V.recipe = null;
+    ta.value = r.prompt;
+    if (r.size) el.querySelector(`[data-seg="vh-size"] .seg-opt[data-val="${r.size}"]`)?.click();
+    if (r.quality) el.querySelector(`[data-seg="vh-quality"] .seg-opt[data-val="${r.quality}"]`)?.click();
+    const useRef = $('#vh-useref', el);
+    if (useRef && typeof r.useRef === 'boolean') useRef.checked = r.useRef;
+    ta.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    ta.focus();
+    toast(t('已载入这张图的配方，修改后点「加入生成队列」'), 3000);
+  }
+}
+
+// 按图片配方原样再生成一张
+function regenerate(img) {
+  const r = img.recipe;
+  const label = r.label || `${img.member || t('团体海报')} · ${t('再来一张')}`;
+  enqueue({
+    groupId: V.G.id, member: img.member, label, prompt: r.prompt, useRef: r.useRef,
+    size: r.size, quality: r.quality, kind: img.kind || 'gen',
+  });
+  toast(t('已加入队列：{label}', { label }));
+}
+
+// 把图片配方载入编辑区：切到该图所属分类后填入提示词与参数
+function editRecipe(img) {
+  V.recipe = img.recipe;
+  if (img.member) V.cat = img.kind && img.kind !== 'gen' && CATS.some((c) => c.id === img.kind) ? img.kind : 'look';
+  renderPanel();
 }
 
 function renderHero() {
@@ -359,10 +390,12 @@ function renderGallery() {
         <div class="vis-thumb${img.isPrimary ? ' primary' : ''}" data-id="${esc(img.id)}" data-url="${esc(img.url)}">
           <img src="${esc(img.url)}" loading="lazy" alt="">
           ${img.isPrimary ? `<span class="vt-tag">${t('主图')}</span>` : ''}
-          ${img.isPrimary ? '' : `<div class="vt-acts">
-            <button data-primary>${t('设为主图')}</button>
-            <button data-archive>📦 ${t('归档')}</button>
-          </div>`}
+          <div class="vt-acts">
+            ${img.recipe ? `<button data-again title="${t('用同样的提示词和参数再生成一张')}">↻ ${t('再来一张')}</button>
+            <button data-edit-recipe title="${t('把这张图的提示词和参数载入编辑区')}">✎ ${t('改配方')}</button>` : ''}
+            ${img.isPrimary ? '' : `<button data-primary>${t('设为主图')}</button>
+            <button data-archive>📦 ${t('归档')}</button>`}
+          </div>
         </div>`).join('')}
     </div>
     ${archived.length ? `<details class="ms-archive">
@@ -384,6 +417,9 @@ function renderGallery() {
     const thumb = e.target.closest('.vis-thumb');
     if (!thumb) return;
     const id = thumb.dataset.id;
+    const img = V.G.images.find((i) => i.id === id);
+    if (e.target.closest('[data-again]')) return regenerate(img);
+    if (e.target.closest('[data-edit-recipe]')) return editRecipe(img);
     try {
       if (e.target.closest('[data-primary]')) { await api.images.setPrimary(id); toast(t('已设为主图')); return refresh(); }
       if (e.target.closest('[data-archive]')) { await api.images.archive(id, true); toast(t('已归档')); return refresh(); }
@@ -398,11 +434,37 @@ function renderGallery() {
 }
 
 // ── 生成队列：跨对象 / 跨页面共享，逐个执行，完成后只刷新图库不打断编辑 ──
+const QUEUE_KEY = 'starform.imageQueue';
 const queue = [];
 let running = false;
 
+function saveQueue() {
+  try { sessionStorage.setItem(QUEUE_KEY, JSON.stringify(queue)); } catch { /* 存储不可用时只在内存排队 */ }
+}
+
+// 刷新前正在生成的那张由服务端继续完成，不重复提交；只恢复还没轮到的
+function restoreQueue() {
+  let saved = [];
+  try { saved = JSON.parse(sessionStorage.getItem(QUEUE_KEY) || '[]'); } catch { /* 忽略损坏的存储 */ }
+  if (!Array.isArray(saved) || !saved.length) return;
+  const interrupted = saved.some((task) => task.running);
+  const pending = saved.filter((task) => !task.running);
+  queue.push(...pending);
+  saveQueue();
+  if (interrupted) toast(t('刷新前正在生成的图片会在后台完成，稍后可在图库看到'), 4000);
+  if (pending.length) {
+    toast(t('已恢复 {n} 个排队中的生图任务', { n: pending.length }), 3500);
+    runQueue();
+  }
+}
+
+window.addEventListener('beforeunload', (e) => {
+  if (queue.length) e.preventDefault();
+});
+
 function enqueue(task) {
   queue.push(task);
+  saveQueue();
   renderQueue();
   runQueue();
 }
@@ -413,9 +475,10 @@ async function runQueue() {
   while (queue.length) {
     const task = queue[0];
     task.running = true;
+    saveQueue();
     renderQueue();
     try {
-      const img = await api.images.generate(task.groupId, task.member, task.prompt, task.size, task.quality, task.kind, task.useRef);
+      const img = await api.images.generate(task.groupId, task.member, task.prompt, task.size, task.quality, task.kind, task.useRef, task.label);
       if (V.G?.id === task.groupId) {
         if (img.isPrimary) V.G.images.forEach((i) => { if (i.member === task.member) i.isPrimary = false; });
         V.G.images.unshift({ ...img, archived: false });
@@ -427,10 +490,13 @@ async function runQueue() {
       toast(t('生成失败：') + e.message, 4000);
     }
     queue.shift();
+    saveQueue();
     renderQueue();
   }
   running = false;
 }
+
+restoreQueue();
 
 function renderQueue() {
   const box = V.el && $('#vh-queue', V.el);
@@ -445,6 +511,7 @@ function renderQueue() {
   box.querySelectorAll('[data-unqueue]').forEach((b) => b.onclick = () => {
     const i = Number(b.dataset.unqueue);
     if (queue[i] && !queue[i].running) queue.splice(i, 1);
+    saveQueue();
     renderQueue();
   });
 }

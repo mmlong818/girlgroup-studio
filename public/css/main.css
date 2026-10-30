@@ -1358,6 +1358,8 @@ details[open].vis-prompt-detail summary::before { content: '− '; }
   background: rgba(255,255,255,.92); color: var(--ink); font-family: inherit; font-weight: 700;
 }
 .vt-acts button:hover { background: #fff; }
+.vis-thumb .vt-acts { flex-wrap: wrap; }
+.vis-thumb .vt-acts:not(:has(button)) { display: none; }
 
 @media (max-width: 880px) {
   .vis-layout { grid-template-columns: 1fr; gap: 24px; }

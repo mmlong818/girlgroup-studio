@@ -757,4 +757,11 @@ export const EN = {
   "出道页已公开": "Debut page is now public",
   "出道页已设为不公开": "Debut page is now private",
   "设置失败：": "Failed to update: ",
+  "再来一张": "Again",
+  "改配方": "Edit recipe",
+  "用同样的提示词和参数再生成一张": "Generate another with the same prompt and settings",
+  "把这张图的提示词和参数载入编辑区": "Load this image's prompt and settings into the editor",
+  "已载入这张图的配方，修改后点「加入生成队列」": "Recipe loaded. Edit it, then click Add to queue.",
+  "刷新前正在生成的图片会在后台完成，稍后可在图库看到": "The image that was generating before the refresh will finish in the background and show up in the gallery.",
+  "已恢复 {n} 个排队中的生图任务": "Restored {n} queued image tasks",
 };

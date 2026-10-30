@@ -45,8 +45,8 @@ export const api = {
   },
   images: {
     upload: (groupId, member, dataUrl) => req('POST', '/api/images/upload', { groupId, member, dataUrl }).then((d) => d.image),
-    generate: (groupId, member, prompt, size, quality, kind, useRef) =>
-      req('POST', '/api/images/generate', { groupId, member, prompt, size, quality, kind, useRef }).then((d) => d.image),
+    generate: (groupId, member, prompt, size, quality, kind, useRef, label) =>
+      req('POST', '/api/images/generate', { groupId, member, prompt, size, quality, kind, useRef, label }).then((d) => d.image),
     setPrimary: (id) => req('POST', `/api/images/${id}/primary`, {}),
     archive: (id, archived) => req('POST', `/api/images/${id}/archive`, { archived }),
     remove: (id) => req('DELETE', `/api/images/${id}`),

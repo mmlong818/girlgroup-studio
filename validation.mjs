@@ -207,6 +207,7 @@ export function validateImageGenerate(body) {
   if (body.size !== undefined && !['1024x1024', '1024x1536', '1536x1024'].includes(body.size)) fail('图片尺寸无效');
   if (body.quality !== undefined && !['low', 'medium', 'high'].includes(body.quality)) fail('图片质量无效');
   if (body.useRef !== undefined && typeof body.useRef !== 'boolean') fail('useRef 必须是布尔值');
+  if (body.label !== undefined) string(body.label, 'label', { max: 200, optional: true });
   return body;
 }
 
@@ -265,6 +266,10 @@ export function validateBackup(backup) {
     string(image.dataUrl, `backup.images[${i}].dataUrl`, { max: 22 * 1024 * 1024 });
     if (image.isPrimary !== undefined && typeof image.isPrimary !== 'boolean') fail(`backup.images[${i}].isPrimary 必须是布尔值`);
     if (image.archived !== undefined && typeof image.archived !== 'boolean') fail(`backup.images[${i}].archived 必须是布尔值`);
+    if (image.recipe != null) {
+      object(image.recipe, `backup.images[${i}].recipe`);
+      string(image.recipe.prompt, `backup.images[${i}].recipe.prompt`, { max: 20_000 });
+    }
   });
   backup.works = works;
   backup.studio = studio;

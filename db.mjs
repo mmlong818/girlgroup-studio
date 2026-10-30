@@ -70,6 +70,10 @@ CREATE TABLE IF NOT EXISTS app_settings (
 if (!db.prepare("SELECT 1 FROM pragma_table_info('images') WHERE name = 'archived'").get()) {
   db.exec('ALTER TABLE images ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
 }
+// 迁移：images.recipe 记录 AI 生图配方（提示词 / 尺寸 / 质量 / 参考开关），上传图为空
+if (!db.prepare("SELECT 1 FROM pragma_table_info('images') WHERE name = 'recipe'").get()) {
+  db.exec("ALTER TABLE images ADD COLUMN recipe TEXT NOT NULL DEFAULT ''");
+}
 
 export const uid = (n = 12) => crypto.randomBytes(n).toString('base64url').slice(0, n);
 const now = () => new Date().toISOString();
@@ -183,12 +187,12 @@ export const Studio = {
 
 // ── 图片 ──
 export const Images = {
-  create(groupId, member, kind, filename) {
+  create(groupId, member, kind, filename, recipe = null) {
     const id = uid();
     const hasPrimary = db.prepare('SELECT COUNT(*) AS n FROM images WHERE group_id = ? AND member = ? AND is_primary = 1')
       .get(groupId, member).n > 0;
-    db.prepare('INSERT INTO images (id, group_id, member, kind, filename, is_primary, created_at) VALUES (?,?,?,?,?,?,?)')
-      .run(id, groupId, member, kind, filename, hasPrimary ? 0 : 1, now());
+    db.prepare('INSERT INTO images (id, group_id, member, kind, filename, is_primary, recipe, created_at) VALUES (?,?,?,?,?,?,?,?)')
+      .run(id, groupId, member, kind, filename, hasPrimary ? 0 : 1, recipe ? JSON.stringify(recipe) : '', now());
     return this.byId(id);
   },
   byId: (id) => db.prepare('SELECT * FROM images WHERE id = ?').get(id),

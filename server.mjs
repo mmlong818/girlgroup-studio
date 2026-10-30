@@ -169,12 +169,30 @@ function workOut(row) {
   };
 }
 
+function parseRecipe(text) {
+  if (!text) return null;
+  try { return JSON.parse(text); } catch { return null; }
+}
+
+// 只保留配方的已知字段，防止备份里夹带任意数据
+function cleanRecipe(r) {
+  if (!r || typeof r !== 'object' || typeof r.prompt !== 'string') return null;
+  return {
+    prompt: r.prompt,
+    size: ['1024x1024', '1024x1536', '1536x1024'].includes(r.size) ? r.size : undefined,
+    quality: ['low', 'medium', 'high'].includes(r.quality) ? r.quality : undefined,
+    useRef: typeof r.useRef === 'boolean' ? r.useRef : undefined,
+    label: typeof r.label === 'string' ? r.label.slice(0, 200) : undefined,
+  };
+}
+
 function groupFull(row) {
   return {
     ...groupSummary(row),
     data: JSON.parse(row.data),
     images: Images.listByGroup(row.id).map((i) => ({
       id: i.id, member: i.member, kind: i.kind, url: `/uploads/${i.filename}`, isPrimary: !!i.is_primary, archived: !!i.archived,
+      recipe: parseRecipe(i.recipe),
     })),
   };
 }
@@ -207,6 +225,7 @@ async function buildBackup(row) {
       kind: image.kind,
       isPrimary: Boolean(image.is_primary),
       archived: Boolean(image.archived),
+      recipe: parseRecipe(image.recipe),
       dataUrl: `data:${imageMime(image.filename)};base64,${bytes.toString('base64')}`,
     };
   }));
@@ -232,7 +251,7 @@ async function restoreBackup(backup) {
     for (const source of backup.images) {
       const filename = await saveDataUrl(source.dataUrl);
       files.push(filename);
-      const image = Images.create(row.id, source.member || '', source.kind, filename);
+      const image = Images.create(row.id, source.member || '', source.kind, filename, cleanRecipe(source.recipe));
       if (source.isPrimary) primaryIds.push(image.id);
       if (source.archived && !source.isPrimary) Images.setArchived(image.id, true);
     }
@@ -404,16 +423,19 @@ async function handleAPI(req, res, urlPath) {
     const row = Groups.byId(body.groupId);
     if (!row) return fail(res, 404, '企划不存在');
     const isPoster = !body.member;
+    const size = body.size || (isPoster ? '1536x1024' : '1024x1536');
+    const quality = body.quality || 'medium';
+    const recipe = cleanRecipe({ prompt: body.prompt, size, quality, useRef: isPoster ? undefined : body.useRef !== false, label: body.label });
     let filename;
     if (isPoster) {
       // 海报：收集成员主图作为参考（API 最多接受 4 张）
       const allImgs = Images.listByGroup(body.groupId);
       const refs = allImgs.filter((i) => i.member && i.is_primary && !i.archived).slice(0, 4);
       const refPaths = refs.map((i) => path.join(UPLOAD_DIR, i.filename));
-      console.log(`[${new Date().toLocaleTimeString()}] 生图: 团体海报 (${body.size || '1536x1024'})${refs.length ? ` · 参考 ${refs.length} 位成员主图` : ''}`);
+      console.log(`[${new Date().toLocaleTimeString()}] 生图: 团体海报 (${size})${refs.length ? ` · 参考 ${refs.length} 位成员主图` : ''}`);
       filename = refs.length
-        ? await generateWithReferences(body.prompt, refPaths, { size: body.size || '1536x1024', quality: body.quality })
-        : await generateImage(body.prompt, { size: body.size || '1536x1024', quality: body.quality });
+        ? await generateWithReferences(body.prompt, refPaths, { size, quality })
+        : await generateImage(body.prompt, { size, quality });
     } else {
       // 成员生图：默认携带角色参考（主图 + 最新造型设定图，最多 4 张），可用 useRef:false 关闭
       let refs = [];
@@ -424,14 +446,14 @@ async function handleAPI(req, res, urlPath) {
         if (primary && !refs.some((i) => i.id === primary.id)) refs.unshift(primary);
         refs = refs.slice(0, 4);
       }
-      console.log(`[${new Date().toLocaleTimeString()}] 生图: ${body.member} (${body.size || '1024x1536'})${refs.length ? ` · 参考 ${refs.length} 张` : ''}`);
+      console.log(`[${new Date().toLocaleTimeString()}] 生图: ${body.member} (${size})${refs.length ? ` · 参考 ${refs.length} 张` : ''}`);
       filename = refs.length
-        ? await generateWithReferences(body.prompt, refs.map((i) => path.join(UPLOAD_DIR, i.filename)), { size: body.size || '1024x1536', quality: body.quality })
-        : await generateImage(body.prompt, { size: body.size, quality: body.quality });
+        ? await generateWithReferences(body.prompt, refs.map((i) => path.join(UPLOAD_DIR, i.filename)), { size, quality })
+        : await generateImage(body.prompt, { size, quality });
     }
     try {
-      const img = Images.create(body.groupId, body.member || '', body.kind || 'gen', filename);
-      return ok(res, { image: { id: img.id, member: img.member, kind: img.kind, url: `/uploads/${img.filename}`, isPrimary: !!img.is_primary } });
+      const img = Images.create(body.groupId, body.member || '', body.kind || 'gen', filename, recipe);
+      return ok(res, { image: { id: img.id, member: img.member, kind: img.kind, url: `/uploads/${img.filename}`, isPrimary: !!img.is_primary, recipe } });
     } catch (err) {
       if (filename) try { unlinkSync(path.join(UPLOAD_DIR, filename)); } catch { /* 回滚失败不覆盖原始错误 */ }
       throw err;

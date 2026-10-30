@@ -236,6 +236,34 @@ test('换了服务地址不会把已保存的 Key 发出去', async () => {
   );
 });
 
+test('生图临时失败自动重试，配方随图保存并进入备份', async () => {
+  const headers = { Host: `127.0.0.1:${port}`, 'Content-Type': 'application/json' };
+  const post = (url, body) => request('POST', url, { headers, body: JSON.stringify(body) });
+  const data = { concept: { name: '配方测试', members: [{ codename: '星', archetype: '队长', color: '#123456' }] }, members: [{ codename: '星' }] };
+  const group = (await post('/api/groups', { data })).json.group;
+
+  const realFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    if (calls === 1) return new Response('busy', { status: 503 });
+    return Response.json({ data: [{ b64_json: TINY_PNG.split(',')[1] }] });
+  };
+  let res;
+  try {
+    res = await post('/api/images/generate', { groupId: group.id, prompt: '海报提示词', size: '1024x1024', label: '团体海报 · 测试' });
+  } finally { globalThis.fetch = realFetch; }
+
+  assert.equal(res.status, 200);
+  assert.equal(calls, 2);
+  assert.deepEqual(res.json.image.recipe, { prompt: '海报提示词', size: '1024x1024', quality: 'medium', label: '团体海报 · 测试' });
+
+  const backup = (await request('GET', `/api/groups/${group.id}/export`, { headers })).json.backup;
+  assert.equal(backup.images[0].recipe.prompt, '海报提示词');
+  const restored = (await post('/api/import', { backup })).json.group;
+  assert.equal(restored.images[0].recipe.prompt, '海报提示词');
+});
+
 test('图片归档、改艺名同步与公开页过滤', async (t) => {
   const headers = { Host: `127.0.0.1:${port}`, 'Content-Type': 'application/json' };
   const post = (url, body) => request('POST', url, { headers, body: JSON.stringify(body) });
