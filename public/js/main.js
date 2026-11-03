@@ -6,6 +6,7 @@ import { renderWorkspace } from './workspace.js';
 import { renderOps } from './ops.js';
 import { openSettings } from './settings-ui.js';
 import { t, fmtDate, mountLangSwitch } from './i18n.js';
+import { icon } from './icons.js';
 
 const app = $('#app');
 export const appConfig = { imageGen: false, imageModel: '' };
@@ -15,14 +16,15 @@ const ENABLE_DASH_COVERS = new URLSearchParams(location.search).get('covers') ==
 
 async function renderDashboard(isCurrent = () => true) {
   app.innerHTML = `
-    <div class="dash-hero">
-      <div><div class="en-label">PROJECTS</div><h1>${t('我的企划')}</h1><p class="sub">${t('每一个团，都从一个想法开始')}</p></div>
-      <div class="spacer"></div>
-      <button class="btn btn-ghost" id="btn-settings" title="${t('模型 API 绑定')}">⚙️ ${t('模型设置')}</button>
-      <button class="btn btn-ghost" id="btn-import">${t('导入 JSON')}</button>
-      <button class="btn btn-primary btn-big" id="btn-new">✦ ${t('新企划')}</button>
+    <div class="dash-hero page-heading">
+      <div class="page-heading-copy"><div class="en-label">PROJECTS</div><h1>${t('我的企划')}</h1><p class="sub">${t('每一个团，都从一个想法开始')}</p></div>
+      <div class="dashboard-actions">
+        <button class="btn btn-ghost" id="btn-settings" title="${t('模型 API 绑定')}">${icon('settings-2')}${t('模型设置')}</button>
+        <button class="btn btn-ghost" id="btn-import" title="${t('导入 JSON')}">${icon('file-up')}${t('导入 JSON')}</button>
+        <button class="btn btn-primary btn-big" id="btn-new" title="${t('新企划')}">${icon('plus')}${t('新企划')}</button>
+      </div>
     </div>
-    <div id="group-list"><div class="empty-state"><div class="big">⏳</div>${t('加载中…')}</div></div>`;
+    <div id="group-list"><div class="empty-state"><div class="spinner" aria-hidden="true"></div>${t('加载中…')}</div></div>`;
 
   $('#btn-new').onclick = () => { location.hash = '#/new'; };
   $('#btn-import').onclick = importJSON;
@@ -40,11 +42,10 @@ async function renderDashboard(isCurrent = () => true) {
 
   if (!groups.length) {
     $('#group-list').innerHTML = `
-      <div class="empty-state">
-        <div class="big">🎤</div>
+      <div class="empty-state dashboard-empty">
+        <div class="empty-state-icon" aria-hidden="true">${icon('folder-open')}</div>
         <p style="font-size:17px;font-weight:600;color:var(--ink-2)">${t('还没有企划')}</p>
-        <p style="margin:6px 0 22px">${t('输入一个想法，3 分钟出道一个团')}</p>
-        <button class="btn btn-primary btn-big" id="btn-first-group">✦ ${t('创建第一个偶像团')}</button>
+        <button class="btn btn-primary btn-big" id="btn-first-group" title="${t('创建第一个偶像团')}">${icon('plus')}${t('创建第一个偶像团')}</button>
       </div>`;
     $('#btn-first-group').onclick = () => { location.hash = '#/new'; };
     return;
@@ -66,8 +67,8 @@ async function renderDashboard(isCurrent = () => true) {
         <div class="gc-foot">
           <span>${fmtDate(g.updatedAt)}</span>
           <div class="spacer"></div>
-          <a class="btn btn-ghost btn-sm" href="#/group/${esc(g.id)}" data-stop>${t('企划台')}</a>
-          <a class="btn btn-primary btn-sm" href="#/ops/${esc(g.id)}" data-stop>${t('运营')}</a>
+          <a class="btn btn-ghost btn-sm" href="#/group/${esc(g.id)}" data-stop>${t('企划台')}${icon('arrow-right')}</a>
+          <a class="btn btn-primary btn-sm" href="#/ops/${esc(g.id)}" data-stop>${t('运营')}${icon('arrow-right')}</a>
         </div>
       </div>
     </div>`;
@@ -113,6 +114,11 @@ async function route(version) {
   const hash = location.hash;
   const mGroup = hash.match(/^#\/group\/([\w-]+)(?:\?tab=([\w-]+))?/);
   const mOps = hash.match(/^#\/ops\/([\w-]+)(?:\?tab=([\w-]+))?/);
+  const navPage = hash === '#/new' ? '#/new' : (!hash || hash === '#' || hash === '#/') ? '#/' : null;
+  document.querySelectorAll('.studio-nav a').forEach((link) => {
+    if (link.getAttribute('href') === navPage) link.setAttribute('aria-current', 'page');
+    else link.removeAttribute('aria-current');
+  });
   document.body.classList.toggle('ws-mode', !!mGroup || !!mOps);
   if (hash === '#/new') return renderWizard(app);
   if (mOps) return renderOps(app, mOps[1], mOps[2], isCurrent);

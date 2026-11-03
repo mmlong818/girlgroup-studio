@@ -325,6 +325,21 @@ async function handleAPI(req, res, urlPath) {
     const backup = validateBackup(body.backup);
     return ok(res, { group: groupFull(await restoreBackup(backup)) });
   }
+  // 只合并画风字段；读取当前数据到同步写入之间不跨异步边界。
+  if (seg[1] === 'groups' && seg[2] && seg[3] === 'art-style' && !seg[4] && req.method === 'PATCH') {
+    const allowed = new Set(['', 'anime', 'realistic', 'illustration', 'render3d', 'painterly']);
+    if (!body || typeof body !== 'object' || Array.isArray(body)
+      || Object.keys(body).length !== 1 || typeof body.artStyle !== 'string' || !allowed.has(body.artStyle)) {
+      return fail(res, 400, 'artStyle 无效');
+    }
+    const row = Groups.byId(seg[2]);
+    if (!row) return fail(res, 404, '企划不存在');
+    const data = JSON.parse(row.data);
+    if (body.artStyle) data.artStyle = body.artStyle;
+    else delete data.artStyle;
+    Groups.update(row.id, data);
+    return ok(res, { artStyle: body.artStyle });
+  }
   // 出道页公开开关
   if (seg[1] === 'groups' && seg[2] && seg[3] === 'public' && req.method === 'POST') {
     if (typeof body.isPublic !== 'boolean') return fail(res, 400, 'isPublic 必须是布尔值');

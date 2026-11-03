@@ -188,12 +188,19 @@ export const Studio = {
 // ── 图片 ──
 export const Images = {
   create(groupId, member, kind, filename, recipe = null) {
-    const id = uid();
-    const hasPrimary = db.prepare('SELECT COUNT(*) AS n FROM images WHERE group_id = ? AND member = ? AND is_primary = 1')
-      .get(groupId, member).n > 0;
-    db.prepare('INSERT INTO images (id, group_id, member, kind, filename, is_primary, recipe, created_at) VALUES (?,?,?,?,?,?,?,?)')
-      .run(id, groupId, member, kind, filename, hasPrimary ? 0 : 1, recipe ? JSON.stringify(recipe) : '', now());
-    return this.byId(id);
+    return transaction(() => {
+      if (!Groups.byId(groupId)) {
+        const err = new Error('企划已删除，图片未保存');
+        err.statusCode = 404;
+        throw err;
+      }
+      const id = uid();
+      const hasPrimary = db.prepare('SELECT COUNT(*) AS n FROM images WHERE group_id = ? AND member = ? AND is_primary = 1')
+        .get(groupId, member).n > 0;
+      db.prepare('INSERT INTO images (id, group_id, member, kind, filename, is_primary, recipe, created_at) VALUES (?,?,?,?,?,?,?,?)')
+        .run(id, groupId, member, kind, filename, hasPrimary ? 0 : 1, recipe ? JSON.stringify(recipe) : '', now());
+      return this.byId(id);
+    });
   },
   byId: (id) => db.prepare('SELECT * FROM images WHERE id = ?').get(id),
   listByGroup: (groupId) => db.prepare('SELECT * FROM images WHERE group_id = ? ORDER BY is_primary DESC, created_at DESC').all(groupId),

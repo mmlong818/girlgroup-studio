@@ -5,6 +5,7 @@ import { $, esc, toast, modal, confirmModal, segmented, lightbox } from './ui.js
 import { appConfig } from './main.js';
 import { memberPresets, posterPresets, catOptions, refsFor, CATS, ART_STYLES } from './style-presets.js';
 import { t } from './i18n.js';
+import { createVisualDrafts, readVisualDraft, restoreVisualDraft, isCurrentVisualGroup } from './visual-draft.js';
 
 const POSTER = '__poster__';
 const KIND_LABELS = { gen: '常用造型', upload: '上传' };
@@ -12,6 +13,17 @@ CATS.forEach((c) => { KIND_LABELS[c.id] = c.label; });
 
 // 当前视图状态；G 始终指向本车间持有的最新企划对象
 const V = { G: null, el: null, onChange: null, target: POSTER, cat: 'look', filter: '', recipe: null };
+const drafts = createVisualDrafts();
+let renderedScope = null;
+const styleSaves = new Map();
+
+function captureDraft() {
+  if (!renderedScope || !V.el) return;
+  const panel = $('#vis-panel', V.el);
+  const prompt = panel && $('#vh-prompt', panel);
+  if (!prompt) return;
+  drafts.set(renderedScope, readVisualDraft(panel, renderedScope));
+}
 
 // 设定下一次进入车间时选中的对象（工作台「去视觉车间」跳转用）
 export function focusVisualTarget(codename) {
@@ -20,6 +32,7 @@ export function focusVisualTarget(codename) {
 
 // onChange(group)：企划对象被替换 / 更新后通知宿主页面同步
 export function renderVisualTab(el, G, onChange) {
+  captureDraft();
   V.G = G; V.el = el; V.onChange = onChange;
   const members = G.data.members || [];
   if (V.target !== POSTER && !members.some((m) => m.codename === V.target)) V.target = POSTER;
@@ -92,6 +105,7 @@ function currentOptions() {
 
 // ── 主面板 ──
 function renderPanel() {
+  captureDraft();
   const el = $('#vis-panel', V.el);
   if (!el) return;
   const G = V.G;
@@ -102,8 +116,11 @@ function renderPanel() {
   const cats = [{ id: 'look', label: '常用造型', desc: '基础立绘、舞台造型、写真、小卡、设定表、潮玩等常用模板' }, ...CATS];
   const cat = cats.find((c) => c.id === V.cat) || cats[0];
   const options = currentOptions();
-  let selected = options[0];
-  const defaultSize = isPoster ? '1536x1024' : (selected?.size || '1024x1536');
+  const scope = { groupId: G.id, target: V.target, cat: V.cat, optionKeys: options.map((o) => o.key) };
+  const saved = drafts.get(scope);
+  const restored = restoreVisualDraft(options, saved, isPoster ? '1536x1024' : '1024x1536');
+  let { selected } = restored;
+  const defaultSize = saved?.size || (isPoster ? restored.size : (selected?.size || restored.size));
 
   el.innerHTML = `
     <div class="vis-stage" style="--mc:${esc(mc)}">
@@ -133,7 +150,7 @@ function renderPanel() {
 
           <div class="ms-step-label">① ${isPoster ? t('海报模板') : t('第 1 步 · 选择风格与要求')}</div>
           <div class="ms-style-row">
-            ${options.map((o, i) => `<button class="ms-style-chip${i === 0 ? ' on' : ''}" data-opt="${i}">${esc(o.label)}</button>`).join('')}
+            ${options.map((o, i) => `<button class="ms-style-chip${o === selected ? ' on' : ''}" data-opt="${i}">${esc(o.label)}</button>`).join('')}
           </div>
           <div class="ms-gen-row">
             <input id="vh-hint" type="text" placeholder="${t('附加要求（可选）')}">
@@ -162,7 +179,7 @@ function renderPanel() {
               { value: 'medium', label: t('标准') },
               { value: 'high', label: t('高清') },
               { value: 'low', label: t('草图') },
-            ], 'medium')}
+            ], restored.quality)}
           </div>
           ${isPoster ? '' : '<div class="vis-opt-row" id="vh-refs"></div>'}
 
@@ -181,12 +198,19 @@ function renderPanel() {
 
   const ta = $('#vh-prompt', el);
   const hintInput = $('#vh-hint', el);
-  let draft = selected ? selected.build('') : { prompt: '', locks: [] };
-  ta.value = draft.prompt;
+  hintInput.value = restored.hint;
+  let draft = restored.draft;
+  ta.value = restored.prompt;
+  renderedScope = scope;
+  renderedScope.generatedPrompt = draft.prompt;
+  el.oninput = captureDraft;
+  el.onchange = captureDraft;
 
   const applyOption = () => {
     draft = selected.build(hintInput.value.trim());
     ta.value = draft.prompt;
+    scope.generatedPrompt = draft.prompt;
+    captureDraft();
   };
 
   el.querySelectorAll('[data-opt]').forEach((chip) => chip.onclick = () => {
@@ -194,27 +218,43 @@ function renderPanel() {
     selected = options[Number(chip.dataset.opt)];
     applyOption();
     if (selected.size) el.querySelector(`[data-seg="vh-size"] .seg-opt[data-val="${selected.size}"]`)?.click();
+    captureDraft();
   });
   // 附加要求只在提示词未被手改时自动并入草稿，避免覆盖手动编辑
   hintInput.onchange = () => { if (ta.value === draft.prompt) applyOption(); };
 
   el.querySelectorAll('[data-cat]').forEach((b) => b.onclick = () => { V.cat = b.dataset.cat; renderPanel(); });
 
-  // 画风锁定：企划级设置，保存失败则回滚
+  // 同一企划串行保存画风，避免后发请求先完成时被旧请求覆盖。
   el.querySelectorAll('[data-artstyle]').forEach((b) => b.onclick = async () => {
     const v = b.dataset.artstyle;
-    const prev = G.data.artStyle;
-    if ((prev || '') === v) return;
-    if (v) G.data.artStyle = v; else delete G.data.artStyle;
-    try {
-      await api.groups.update(G.id, G.data);
-      V.onChange?.(G);
-      toast(v ? t('画风已锁定：{label}', { label: t(ART_STYLES.find((a) => a.key === v).label) }) : t('已解除画风锁定'));
-    } catch (e) {
-      if (prev) G.data.artStyle = prev; else delete G.data.artStyle;
-      toast(t('保存失败：') + e.message, 3000);
+    if ((G.data.artStyle || '') === v) return;
+    captureDraft();
+    let state = styleSaves.get(G.id);
+    if (!state) {
+      state = { tail: Promise.resolve(), serial: 0, committed: G.data.artStyle || '' };
+      styleSaves.set(G.id, state);
     }
-    if (live() && V.G === G) renderPanel();
+    if (v) G.data.artStyle = v; else delete G.data.artStyle;
+    const serial = ++state.serial;
+    const save = async () => {
+      try {
+        await api.groups.updateArtStyle(G.id, v);
+        state.committed = v;
+        if (serial === state.serial && isCurrentVisualGroup(V.G, G)) {
+          V.onChange?.(G);
+          toast(v ? t('画风已锁定：{label}', { label: t(ART_STYLES.find((a) => a.key === v).label) }) : t('已解除画风锁定'));
+        }
+      } catch (e) {
+        if (serial === state.serial) {
+          if (state.committed) G.data.artStyle = state.committed; else delete G.data.artStyle;
+          if (isCurrentVisualGroup(V.G, G)) toast(t('保存失败：') + e.message, 3000);
+        }
+      }
+      if (serial === state.serial && live() && isCurrentVisualGroup(V.G, G)) renderPanel();
+    };
+    state.tail = state.tail.then(save);
+    await state.tail;
   });
 
   // AI 创作提示词：以当前文本为草稿，按角色档案重写；锁定片段由服务端强制保留
@@ -239,6 +279,7 @@ function renderPanel() {
         locks: draft.locks,
       });
       ta.value = r.prompt;
+      captureDraft();
     } catch (e) {
       toast(t('AI 创作失败，已使用本地模板：') + e.message, 3500);
     }
@@ -283,6 +324,10 @@ function renderPanel() {
 
   renderHero();
   renderRefs();
+  if (saved && typeof saved.useRef === 'boolean') {
+    const useRef = $('#vh-useref', el);
+    if (useRef) useRef.checked = saved.useRef;
+  }
   renderQueue();
   renderGallery();
 
@@ -294,6 +339,7 @@ function renderPanel() {
     if (r.quality) el.querySelector(`[data-seg="vh-quality"] .seg-opt[data-val="${r.quality}"]`)?.click();
     const useRef = $('#vh-useref', el);
     if (useRef && typeof r.useRef === 'boolean') useRef.checked = r.useRef;
+    captureDraft();
     ta.scrollIntoView({ behavior: 'smooth', block: 'center' });
     ta.focus();
     toast(t('已载入这张图的配方，修改后点「加入生成队列」'), 3000);

@@ -10,12 +10,12 @@ export const ART_STYLES = [
 ];
 
 // 生成附加在提示词尾部的画风锁定指令；hasRefs 时同时强制跟随参考图画风
-export function styleSuffix(G, { hasRefs = false } = {}) {
+export function styleSuffix(G, { hasRefs = false, referenceRoles = '' } = {}) {
   const clause = ART_STYLES.find((a) => a.key === G.data?.artStyle)?.clause;
   const parts = [];
-  if (clause) parts.push(`ART STYLE LOCK — the entire image MUST use this exact style, overriding any style words above: ${clause}.`);
-  else if (hasRefs) parts.push('ART STYLE LOCK — exactly keep the ORIGINAL art style of the reference images, overriding any style words above.');
-  if (hasRefs) parts.push('Strictly match the rendering technique, facial features and outfit design of the reference images.');
+  if (clause) parts.push(`ART STYLE LOCK — the entire image MUST use this exact style, overriding any style words above or in later extra requests: ${clause}.`);
+  else if (hasRefs) parts.push('If reference images are attached, keep their original art style unless this task explicitly changes the medium.');
+  if (hasRefs) parts.push(`If reference images are attached, use them for identity and established design details, while allowing the requested outfit, pose or scene changes. ${referenceRoles}`.trim());
   return parts.length ? ' ' + parts.join(' ') : '';
 }
 
@@ -29,6 +29,7 @@ export function refsFor(G, m) {
 }
 
 const memberHasRefs = (G, m) => refsFor(G, m).length > 0;
+const memberReferenceRoles = 'If a primary image is attached, use it for identity; if design sheets are attached, use them for established design details. Do not infer attachment numbers from the draft.';
 
 // 生图风格模板库 — 提炼自 awesome-gpt-image-2（538 案例库）的提示词工程精华，
 // 按偶像企划场景改编：摄影参数化、角色一致性锁定、海报防拼贴约束、文案硬编码。
@@ -43,10 +44,10 @@ export function memberPresets(m, G) {
   const fashion = m.fashion || '';
   const stage = m.stageOutfit || fashion;
   const color = m.color || G.data.concept.mainColor;
-  const suffix = styleSuffix(G, { hasRefs: memberHasRefs(G, m) });
+  const suffix = styleSuffix(G, { hasRefs: memberHasRefs(G, m), referenceRoles: memberReferenceRoles });
 
-  const lock = `【角色锁定·不得改变】面部特征（${look || '以参考图为准'}）；体型比例（${build || '以参考图为准'}）；全图美术风格统一，严格与参考图一致。`;
-  const free = (intent) => `【自由发挥】姿态、表情、服饰造型、环境、光线、氛围均可自由设计，服务于：${intent}`;
+  const lock = `【角色锁定·不得改变】${look ? `面部特征（${look}）；` : ''}${build ? `体型比例（${build}）；` : ''}如提供参考图，以其确认未写明的身份特征；后续附加要求仅改变自由发挥部分，可按任务换装、变更姿态和场景，不改变身份或企划画风。`;
+  const free = (intent) => `【自由发挥】围绕${intent}设计表情与目光、姿态、服饰、环境和光线；主体位置与取景清晰，用可见的光影和材质细节区分人物与场景。`;
 
   const list = [
     { key: 'base', label: t('基础立绘'),
@@ -73,26 +74,26 @@ export function posterPresets(G) {
   const n = (G.data.members || []).length;
   const lockN = `画面正好 ${n} 人，只有这 ${n} 位成员`;
   const single = '只要一张完成度极高的成品海报，不要 moodboard、不要多方案展示板、不要过程稿、不要样机';
-  const titleLock = `海报大标题文字只有「${c.name}」，拼写必须完全正确，不要自行添加其他可读文字`;
-  const suffix = styleSuffix(G, { hasRefs: (G.data.members || []).some((m) => memberHasRefs(G, m)) });
-  const memberLock = '【角色锁定·不得改变】画面中每位成员的面部特征、体型比例与美术风格必须严格与其参考图一致，不得混淆不同成员的长相。';
-  const posterFree = '【自由发挥】构图、队形、姿态、服饰细节、场景、光线与氛围可在模板方向内自由设计。';
+  const titleLock = `海报主标题原文为「${c.name}」，拼写必须完全正确；默认只出现一次，若用户明确要求特殊排版重复则按要求重复`;
+  const suffix = styleSuffix(G, { hasRefs: (G.data.members || []).some((m) => memberHasRefs(G, m)), referenceRoles: 'For a group poster, each member\'s primary image identifies that member; do not blend identities.' });
+  const memberLock = '【角色锁定·不得改变】如提供成员参考图，分别保持对应成员的面部特征和体型比例，不混淆身份；后续附加要求只改变自由发挥部分，可按本次海报要求换装或变更姿态，不改变身份或企划画风。';
+  const posterFree = '【自由发挥】在模板方向内设计清晰队形与前后层次，具体呈现目光、姿态、主光方向和服装可见材质。如用户明确指定要呈现的副标题、日期或口号，逐字放在指定位置，未指定次数时各出现一次；描述性附加要求不是画面文字，不自行编造其他文字或日期占位。';
 
   const list = [
     { key: 'main', label: t('官方主视觉'), size: '1536x1024',
-      prompt: `虚拟偶像团体《${c.name}》官方主视觉海报，${c.visualStyle || c.vibe || ''}，全体成员同框，${lockN}。戏剧化光影，主色 ${c.mainColor}，强标题层级与清晰主体。${titleLock}。${single}` },
+      prompt: `虚拟偶像团体《${c.name}》官方主视觉海报，${c.visualStyle || c.vibe || ''}，全体成员同框，${lockN}。戏剧化光影，主色 ${c.mainColor}，强标题层级与清晰主体。${single}` },
     { key: 'type', label: t('概念字体海报'), size: '1024x1536',
       prompt: `为虚拟偶像团体《${c.name}》设计一张高级概念字体海报。团名「${c.name}」必须成为画面的主视觉结构：巨大、可读、有力量、拼写完全正确。成员（${lockN}）必须与字体互动：重叠字母、从字母间浮现、被字母框住或在字母上投下阴影，而不是摆在旁边。使用围绕主色 ${c.mainColor} 的 4-6 色克制配色。构图风格：高端编辑海报、戏剧性尺度、强层级、少元素、聪明留白、丝网印刷颗粒质感。避免：通用字效、光泽 3D 字体、随机图标、杂乱拼贴、标题错字。${single}` },
     { key: 'concert', label: t('打歌舞台'), size: '1024x1536',
-      prompt: `虚拟偶像团体《${c.name}》打歌舞台 Campaign 海报，单张强主视觉构图。主体：全体成员在舞台上的整齐队形动作，${lockN}。强舞台灯光与逆光剪影层次，反光舞台地面，飘散的应援灯海作背景光斑。品牌化配色：主色 ${c.mainColor} 加对比辅助色。大字标题「${c.name}」，可加一行小字演出日期占位。约束：主体清晰、文字可读、色调统一，不要杂乱拼贴。${single}` },
+      prompt: `虚拟偶像团体《${c.name}》打歌舞台 Campaign 海报，单张强主视觉构图。主体：全体成员在舞台上的整齐队形动作，${lockN}。强舞台灯光与逆光剪影层次，反光舞台地面，飘散的应援灯海作背景光斑。品牌化配色：主色 ${c.mainColor} 加对比辅助色。约束：主体清晰、文字可读、色调统一，不要杂乱拼贴。${single}` },
     { key: 'album', label: t('专辑封面'), size: '1024x1024',
       prompt: `虚拟偶像团体《${c.name}》专辑封面，方形构图，${c.visualStyle || c.vibe || ''}。全体成员（${lockN}）以电影感光影入画，极简高级留白，主色 ${c.mainColor} 主导的克制配色，团名「${c.name}」以小而精致的字体点缀，像高端唱片实体封面。避免：信息拥挤、多余文字、拼贴感。${single}` },
   ];
   // 运营方案里的海报创意也作为可选模板
   (G.data.operations?.posterIdeas || []).forEach((idea, i) => {
-    if (idea?.desc) list.push({ key: `idea${i}`, label: idea.name || t('海报创意'), size: '1536x1024', prompt: `${idea.desc}，${lockN}。${titleLock}。${single}` });
+    if (idea?.desc) list.push({ key: `idea${i}`, label: idea.name || t('海报创意'), size: '1536x1024', prompt: `${idea.desc}，${lockN}。${single}` });
   });
-  return list.map((p) => ({ ...p, prompt: `${p.prompt} ${memberLock}${posterFree}${suffix}`, locks: [memberLock, suffix.trim()].filter(Boolean) }));
+  return list.map((p) => ({ ...p, prompt: `${p.prompt} ${titleLock}。${memberLock}${posterFree}${suffix}`, locks: [memberLock, titleLock, suffix.trim()].filter(Boolean) }));
 }
 
 // ── 成员创作分类（造型设定 / 容貌写真 / 妆造 / 服饰 / 动态 / 杂志大片） ──
@@ -107,7 +108,7 @@ function appearanceText(member) {
   return `${member.codename}, ${member.archetype || 'idol'} archetype`;
 }
 
-const designAnchor = (m) => `[CHARACTER LOCK — same character in every panel: face, hairstyle, body proportions and outfit details must stay identical. Character: ${appearanceText(m)}.]`;
+const designAnchor = (m) => `[CHARACTER LOCK — same character in every panel: face, hairstyle and body proportions stay consistent; keep the same outfit within a single-outfit sheet, but allow the requested outfit changes in a costume sheet. Character: ${appearanceText(m)}. If references are attached, use them to confirm identity.]`;
 
 // 造型设定资料 — 网格/编号/面板约束提炼自 awesome-gpt-image-2 的角色设定表技法
 function designPrompt(m, g, style, hint) {
@@ -120,7 +121,7 @@ function designPrompt(m, g, style, hint) {
     '服装设定': `Character costume design sheet: the same character shown in three full-body outfits side by side — daily wear (${outfit}), stage costume (${stage}), practice wear. Thin callout lines with short notes pointing to key accessories and fabric details. ${anchor} Clean white background, fashion design reference quality. No extra characters.`,
     '姿态表': `Character pose reference sheet, 2x3 grid of six full-body poses with panel numbers 1-6: standing idle, walking, signature dance move, sitting, waving to fans, jumping. Consistent outfit: ${outfit}. ${anchor} Clean white background, dynamic but readable silhouettes, animation reference quality.`,
   };
-  return `${P[style] || P['三视图']} Color accent: ${m.color}.${hint ? ' ' + hint : ''}`;
+  return `${P[style] || P['三视图']} Color accent: ${m.color}. Keep the subject clearly framed in each panel, with readable pose, expression and light direction.${hint ? ' Extra request: ' + hint : ''}`;
 }
 
 // 锁定：美术风格、面部特征、体型比例；自由：姿态、服饰、表情、环境、光线、氛围
@@ -128,14 +129,14 @@ function lockBlock(m) {
   const ap = m.appearance || {};
   const face = [ap.face, ap.hair, ap.eyes].filter(Boolean).join('; ');
   const body = [ap.body, m.heightFeel].filter(Boolean).join('; ');
-  return `[CHARACTER LOCK — these must stay EXACTLY consistent with the reference images and NEVER change: `
-    + `facial features (${face || 'as shown in the reference images'}); `
-    + `body type and proportions (${body || 'as shown in the reference images'}); `
-    + `and one consistent art style throughout.]`;
+  return `[CHARACTER LOCK — keep the established identity consistent: `
+    + `${face ? `facial features (${face}); ` : ''}`
+    + `${body ? `body type and proportions (${body}); ` : ''}`
+    + `if references are attached, use them for any unspecified identity details; allow the requested outfit, pose and scene changes.]`;
 }
 function freeBlock(intent, hint) {
   return `[CREATIVE FREEDOM — pose, expression, outfit styling, environment, background, lighting and mood are yours to design freely, as long as they serve this request:] `
-    + `${intent}${hint ? `. Extra request: ${hint}` : ''}`;
+    + `${intent}. Make gaze and gesture visible, frame the subject clearly, and describe a concrete light direction and visible material detail${hint ? `. Extra request: ${hint}` : ''}`;
 }
 
 export const CATS = [
@@ -192,7 +193,7 @@ export const CATS = [
 
 // 分类模板 → 可选项 { key, label, size, build(hint) → { prompt, locks } }
 export function catOptions(cat, m, G) {
-  const suffix = styleSuffix(G, { hasRefs: memberHasRefs(G, m) });
+  const suffix = styleSuffix(G, { hasRefs: memberHasRefs(G, m), referenceRoles: memberReferenceRoles });
   const lock = (cat.lock || lockBlock)(m);
   return cat.styles.map((style) => ({
     key: style, label: t(style),

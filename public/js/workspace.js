@@ -5,6 +5,7 @@ import { buildMarkdown } from './markdown.js';
 import { showGroupCard } from './card.js';
 import { openRename } from './rename.js';
 import { t } from './i18n.js';
+import { updateEditorField } from './editor-state.js';
 
 let G = null; // 当前企划 { id, shareId, name, data, images }
 let currentTab = 'people';
@@ -242,10 +243,7 @@ function renameField(btn) {
     target: btn.dataset.target || '',
     existing: [group.data.concept.name, ...group.data.concept.members.map((m) => m.codename)],
     onPick: async (name) => {
-      setPath(group.data, path, name);
-      // 同步骨架里的艺名，保持全局一致
-      const m = path.match(/^members\.(\d+)\.codename$/);
-      if (m && group.data.concept.members[m[1]]) group.data.concept.members[m[1]].codename = name;
+      updateEditorField(group.data, path, name);
       await save(group);
       toast(t('已更名'));
       if (G === group) renderTab();
@@ -266,7 +264,7 @@ function editField(path, label) {
       $('[data-x]', mask).onclick = close;
       $('[data-ok]', mask).onclick = async () => {
         const nv = $('#edit-ta', mask).value.trim();
-        setPath(group.data, path, isArr ? nv.split('\n').map((s) => s.trim()).filter(Boolean) : nv);
+        updateEditorField(group.data, path, isArr ? nv.split('\n').map((s) => s.trim()).filter(Boolean) : nv);
         await save(group);
         close();
         toast(t('已保存'));
@@ -315,7 +313,7 @@ function rollField(path, label) {
       $('[data-again]', mask).onclick = run;
       $('[data-ok]', mask).onclick = async () => {
         if (Array.isArray(currentValue) && !Array.isArray(newValue)) newValue = String(newValue).split(/[、,，\n]/).map((s) => s.trim()).filter(Boolean);
-        setPath(group.data, path, newValue);
+        updateEditorField(group.data, path, newValue);
         await save(group);
         closeFn();
         toast(t('已采用新设定'));
